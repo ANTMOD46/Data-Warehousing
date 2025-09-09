@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI + ClickHouse: Stock Insight</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+    .row { display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+    select, input, textarea, button {
+      padding:8px 10px; border:1px solid #d0d0d0; border-radius:8px; font-family:inherit;
+    }
+    textarea { width:100%; height:100px; }
+    .panel { max-width: 960px; background:#fafafa; border:1px solid #eee; border-radius:10px; padding:16px; margin-top:16px; }
+    .muted { color:#6b7280; font-size:12px; }
+    .mono  { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>AI วิเคราะห์หุ้นจาก ClickHouse</h1>
+
+  <div class="panel">
+    <div class="row">
+      <label>สัญลักษณ์:</label>
+      <select id="ticker">
+        {% for t in symbols %}
+          <option value="{{ t }}">{{ t }}</option>
+        {% endfor %}
+      </select>
+
+      <label>ช่วงวัน:</label>
+      <input id="days" type="number" min="5" max="365" value="{{ default_days }}" style="width:90px">
+
+      <label>econ (เช่น CPI) <span class="muted">(ไม่บังคับ)</span></label>
+      <input id="econ" type="text" placeholder="CPI / UNEMPLOYMENT / REAL_GDP" style="width:260px">
+    </div>
+
+    <div class="row" style="align-items:flex-start;">
+      <div style="flex:1">
+        <label>คำสั่ง/เงื่อนไขเพิ่มเติมถึง AI (optional):</label>
+        <textarea id="prompt" placeholder="เช่น โฟกัส momentum, บอกระดับแนวรับสำคัญ, หลีกเลี่ยงศัพท์เทคนิคเยอะ ๆ"></textarea>
+      </div>
+    </div>
+
+    <button id="run">วิเคราะห์</button>
+    <span id="status" class="muted" style="margin-left:8px;"></span>
+  </div>
+
+  <div class="panel" id="result" style="display:none">
+    <h3>ผลวิเคราะห์</h3>
+    <div id="analysis" class="mono"></div>
+  </div>
+
+  <div class="panel" id="preview" style="display:none">
+    <h3>ตัวอย่างแถวข้อมูล (preview)</h3>
+    <div id="previewRows" class="mono"></div>
+  </div>
+
+<script>
+const runBtn  = document.getElementById("run");
+const status  = document.getElementById("status");
+const outPane = document.getElementById("result");
+const outBox  = document.getElementById("analysis");
+const prevPane= document.getElementById("preview");
+const prevBox = document.getElementById("previewRows");
+
+runBtn.addEventListener("click", async () => {
+  const ticker = document.getElementById("ticker").value;
+  const days   = parseInt(document.getElementById("days").value || "30", 10);
+  const econ   = (document.getElementById("econ").value || "").trim();
+  const prompt = document.getElementById("prompt").value || "";
+
+  status.textContent = "กำลังวิเคราะห์...";
+  outPane.style.display = "none";
+  prevPane.style.display = "none";
+  outBox.textContent = "";
+  prevBox.textContent = "";
+
+  try {
+    const res = await fetch("/api/ai/analyze-stock", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ ticker, days, econ_code: econ, prompt })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      status.textContent = "ผิดพลาด: " + (data.error || res.status);
+      return;
+    }
+    status.textContent = "เสร็จแล้ว";
+
+    outPane.style.display = "block";
+    outBox.innerHTML = (data.analysis || "").replace(/\n/g,"<br>");
+
+    if (data.preview && data.preview.first_rows && data.preview.first_rows.length) {
+      prevPane.style.display = "block";
+      prevBox.textContent = data.preview.first_rows.join("\n");
+    }
+  } catch (e) {
+    status.textContent = "ล้มเหลว: " + e;
+  }
+});
+</script>
+</body>
+</html>

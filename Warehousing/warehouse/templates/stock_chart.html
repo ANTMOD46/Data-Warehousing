@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Stock Chart — {{ ticker }}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 24px; }
+    .toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+    select, input[type="text"] { padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; min-width: 220px; }
+    button { padding: 8px 12px; border: 0; border-radius: 8px; cursor: pointer; background: #111827; color: #fff; }
+    .panel { max-width: 1100px; background: #fafafa; border: 1px solid #e5e5e5; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    canvas { width: 100%; height: 360px; }
+  </style>
+</head>
+<body>
+  <h1>Stock — {{ ticker }}</h1>
+
+  <div class="toolbar">
+    <!-- Dropdown รายชื่อหุ้น (มาจาก SELECT DISTINCT ใน view) -->
+    <select id="tickerSelect">
+      {% for t in symbols %}
+        <option value="{{ t }}" {% if t == ticker %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- กล่องพิมพ์ + autocomplete -->
+    <input id="tickerInput" list="tickerList" placeholder="พิมพ์ค้นหา..." value="{{ ticker }}">
+    <datalist id="tickerList">
+      {% for t in symbols %}
+        <option value="{{ t }}"></option>
+      {% endfor %}
+    </datalist>
+
+    <button id="goBtn">ดูกราฟ</button>
+  </div>
+
+  <div class="panel">
+    <canvas id="ohlcChart"></canvas>
+  </div>
+  <div class="panel">
+    <canvas id="volChart"></canvas>
+  </div>
+
+  <script>
+    // ==== Data from server (already de-duplicated/day) ====
+    const labels    = JSON.parse('{{ labels_json|escapejs }}');      // วันที่เรียงจากเก่า->ใหม่
+    const opens     = JSON.parse('{{ opens_json|escapejs }}');
+    const highs     = JSON.parse('{{ highs_json|escapejs }}');
+    const lows      = JSON.parse('{{ lows_json|escapejs }}');
+    const closes    = JSON.parse('{{ closes_json|escapejs }}');
+    const adjCloses = JSON.parse('{{ adjclose_json|escapejs }}');
+    const volumes   = JSON.parse('{{ volumes_json|escapejs }}');
+
+    // ==== OHLC/Adj ====
+    const ohlcCtx = document.getElementById('ohlcChart').getContext('2d');
+    new Chart(ohlcCtx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Open',      data: opens,     borderWidth: 2, pointRadius: 0 },
+          { label: 'High',      data: highs,     borderWidth: 2, pointRadius: 0 },
+          { label: 'Low',       data: lows,      borderWidth: 2, pointRadius: 0 },
+          { label: 'Close',     data: closes,    borderWidth: 2, pointRadius: 0 },
+          { label: 'Adj Close', data: adjCloses, borderWidth: 2, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: true } },
+        scales: {
+          x: { title: { display: true, text: 'Date' } },
+          y: { title: { display: true, text: 'Price' }, beginAtZero: false }
+        }
+      }
+    });
+
+    // ==== Volume ====
+    const volCtx = document.getElementById('volChart').getContext('2d');
+    new Chart(volCtx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Volume', data: volumes, borderWidth: 0 }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: true } },
+        scales: {
+          x: { title: { display: true, text: 'Date' } },
+          y: { title: { display: true, text: 'Volume' }, beginAtZero: true }
+        }
+      }
+    });
+
+    // ==== ควบคุมการเปลี่ยน ticker ====
+    const sel = document.getElementById('tickerSelect');
+    const inp = document.getElementById('tickerInput');
+    const go  = document.getElementById('goBtn');
+
+    sel.addEventListener('change', () => { inp.value = sel.value; });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); go.click(); }
+    });
+    go.addEventListener('click', () => {
+      const t = (inp.value || sel.value || '').trim();
+      if (!t) return;
+      window.location.href = `/ch/chart/${encodeURIComponent(t)}/`;
+    });
+  </script>
+</body>
+</html>

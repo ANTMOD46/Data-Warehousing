@@ -1,3 +1,817 @@
+import json
+from multiprocessing.dummy import connection
 from django.shortcuts import render
+import requests
+import os
+from django.http import Http404, HttpResponse, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from warehouse.models import EconDailyFact, Symbol, PriceDailyFact, DateDim, Exchange, Sector,EconomicIndicator
+from datetime import date
+from decimal import Decimal
+import time
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import io
+import matplotlib
+import matplotlib.pyplot as plt
+import subprocess, sys
 
-# Create your views here.
+API_KEY = os.getenv('LGI5OGYSS30VMFIT')  # API Key ของคุณจาก Alpha Vantage
+ALPHAVANTAGE_API_KEY = "<LGI5OGYSS30VMFIT>"
+
+
+
+def build_api_symbol(ticker: str, exchange_code: str | None) -> str:
+    t = ticker.upper()
+    ex = (exchange_code or "").upper()
+
+    # ตัวอย่างคร่าว ๆ (ปรับตาม exchange จริงในระบบคุณ)
+    if ex in {"BK", "SET", "TH"}:
+        return f"{t}.BK"              # ไทย
+    if ex in {"BSE", "BO"}:
+        return f"{t}.BSE"             # อินเดีย (BSE) บาง provider ใช้ .BO
+    if ex in {"NSE", "NS"}:
+        return f"{t}.NS"              # อินเดีย (NSE)
+    # ดั้งเดิม: ถ้าไม่รู้จัก exchange ก็คืน ticker ตรงๆ
+    return t
+
+def fetch_alpha_daily_adjusted(api_symbol: str):
+    url = "https://www.alphavantage.co/query"
+    params = {
+        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "symbol": api_symbol,
+        "apikey": ALPHAVANTAGE_API_KEY,
+        "outputsize": "full",      # สำคัญ!
+        "datatype": "json",
+    }
+    r = requests.get(url, params=params, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    series = data.get("Time Series (Daily)") or {}
+    # แปลงเป็น list เรียงเก่า->ใหม่
+    rows = []
+    for dstr, vals in sorted(series.items()):
+        rows.append({
+            "date": dt.date.fromisoformat(dstr),
+            "open": float(vals["1. open"]),
+            "high": float(vals["2. high"]),
+            "low": float(vals["3. low"]),
+            "close": float(vals["4. close"]),
+            "adj_close": float(vals.get("5. adjusted close", vals["4. close"])),
+            "volume": int(vals["6. volume"]),
+        })
+    return rows
+
+def load_into_pg(ticker: str, exchange_code: str | None = None, source="alpha"):
+    api_symbol = build_api_symbol(ticker, exchange_code)
+
+    rows = fetch_alpha_daily_adjusted(api_symbol)
+    if not rows:
+        raise RuntimeError(f"No data from API for {api_symbol}")
+
+    # 2) freshness guard: ข้อมูลล่าสุดต้องไม่เก่ากว่า 60 วัน
+    max_date = rows[-1]["date"]
+    if max_date < (dt.date.today() - dt.timedelta(days=60)):
+        raise RuntimeError(f"Stale feed: latest={max_date} for {api_symbol}")
+
+    with connection.cursor() as cur:
+        # หา symbol_id, date_id mapping
+        cur.execute("SELECT id FROM dim_symbol WHERE lower(ticker)=lower(%s)", [ticker])
+        res = cur.fetchone()
+        if not res:
+            raise RuntimeError(f"Ticker {ticker} not found in dim_symbol")
+        symbol_id = res[0]
+
+        # (ทางเลือก) ลบของเก่าก่อน สำหรับ refresh ชัด ๆ
+        cur.execute("DELETE FROM fact_price_daily WHERE symbol_id=%s", [symbol_id])
+
+        # insert เป็น batch
+        for r in rows:
+            cur.execute("""
+                INSERT INTO fact_price_daily
+                (symbol_id, date_id, open, high, low, close, adj_close, volume, source, load_ts)
+                VALUES (
+                  %s,
+                  (SELECT id FROM dim_date WHERE date=%s),
+                  %s,%s,%s,%s,%s,%s,%s, now()
+                )
+                ON CONFLICT (symbol_id, date_id) DO UPDATE SET
+                  open=EXCLUDED.open, high=EXCLUDED.high, low=EXCLUDED.low,
+                  close=EXCLUDED.close, adj_close=EXCLUDED.adj_close,
+                  volume=EXCLUDED.volume, source=EXCLUDED.source,
+                  load_ts=EXCLUDED.load_ts
+            """, [
+                symbol_id, r["date"],
+                r["open"], r["high"], r["low"], r["close"], r["adj_close"], r["volume"],
+                source
+            ])
+
+            
+# ---------- Helpers ----------
+def ensure_date_dim(d: date) -> DateDim:
+    q = DateDim.objects.filter(date=d)
+    if q.exists():
+        return q.get()
+    dow = d.isoweekday()
+    return DateDim.objects.create(
+        date=d,
+        year=d.year,
+        quarter=((d.month - 1) // 3) + 1,
+        month=d.month,
+        day=d.day,
+        day_of_week=dow,
+        is_weekend=(dow >= 6)
+    )
+
+def ensure_exchange(exchange_code: str) -> Exchange:
+    obj, _ = Exchange.objects.get_or_create(code=exchange_code, defaults={"name": exchange_code})
+    return obj
+
+def ensure_sector(sector_code: str) -> Sector:
+    obj, _ = Sector.objects.get_or_create(code=sector_code, defaults={"name": sector_code})
+    return obj
+
+def ensure_indicator(code: str, name: str = "", unit: str = "") -> EconomicIndicator:
+    obj, created = EconomicIndicator.objects.get_or_create(
+        code=code, defaults={"name": name or code, "unit": unit or ""}
+    )
+    # อัปเดตชื่อ/หน่วยถ้ามีข้อมูลใหม่
+    changed = False
+    if name and obj.name != name:
+        obj.name = name; changed = True
+    if unit and obj.unit != unit:
+        obj.unit = unit; changed = True
+    if changed:
+        obj.save(update_fields=["name", "unit"])
+    return obj
+
+def backoff_fetch(url: str, tries: int = 2):
+    """เรียก API; ถ้าเจอ Note/Information (rate limit) ให้หน่วงแล้วลองใหม่ 1 ครั้ง"""
+    for i in range(tries):
+        r = requests.get(url, timeout=60)
+        try:
+            data = r.json()
+        except Exception:
+            data = {"_raw": r.text}
+        note = (data.get("Note") or data.get("Information") or "").lower()
+        if ("thank you for using alpha vantage" in note) or ("frequency" in note):
+            if i + 1 < tries:
+                time.sleep(20)
+                continue
+        return r.status_code, data
+    return r.status_code, data
+
+
+
+def get_stock_data(symbol_ticker):
+    """ดึงข้อมูลจาก Alpha Vantage API"""
+    url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol_ticker}&apikey={API_KEY}&outputsize=full'
+    
+    try:
+        response = requests.get(url)
+        data = response.json()
+
+        # ตรวจสอบว่า API limit ถูกใช้งานหรือไม่
+        if "Note" in data:
+            # ถ้า API limit ถูกใช้งาน ให้รอ 1 นาที
+            time.sleep(60)  # หน่วงเวลา 1 นาที
+            return get_stock_data(symbol_ticker)  # ลองดึงใหม่หลังจากหน่วงเวลา
+
+        # ตรวจสอบข้อมูลที่ได้จาก API
+        if 'Time Series (Daily)' not in data:
+            return None  # ถ้าไม่พบข้อมูลให้ return None
+
+        return data['Time Series (Daily)']
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        return None
+
+
+@csrf_exempt
+def load_stock_data(request, symbol_ticker):
+    if request.method == "GET":
+        symbol = symbol_ticker.upper()
+        time_series = get_stock_data(symbol)
+        if not time_series:
+            return JsonResponse({"error": "Data not found or API limit reached."}, status=400)
+
+        exchange = ensure_exchange("NASDAQ")
+        sector = ensure_sector("TECHNOLOGY")
+        symbol_obj, created = Symbol.objects.get_or_create(
+            ticker=symbol,
+            defaults={
+                "name": symbol,
+                "exchange": exchange,
+                "sector": sector,
+                "currency": "USD",
+            }
+        )
+
+        inserted = 0
+        updated = 0
+        for date_str, stats in time_series.items():
+            stock_date = date.fromisoformat(date_str)
+            date_obj = ensure_date_dim(stock_date)
+
+            open_price = Decimal(stats["1. open"])
+            high_price = Decimal(stats["2. high"])
+            low_price = Decimal(stats["3. low"])
+            close_price = Decimal(stats["4. close"])
+            adj_close = Decimal(stats.get("5. adjusted close", close_price))
+            volume = int(stats.get("6. volume") or stats.get("5. volume", 0))
+
+            price_data, created = PriceDailyFact.objects.update_or_create(
+                symbol=symbol_obj,
+                date=date_obj,
+                defaults={
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'close': close_price,
+                    'adj_close': adj_close,
+                    'volume': volume,
+                    'source': "alpha_vantage",
+                }
+            )
+
+            if created:
+                inserted += 1
+            else:
+                updated += 1
+
+        # 🔽 ตรงนี้คือจุดเพิ่ม: trigger sync ไป ClickHouse
+        try:
+            subprocess.run(
+                ["wsl.exe", "bash", "-lc", f"/home/exit/sync_symbol.sh {symbol}"],
+                check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            print("CH sync failed:", e.stdout, e.stderr, file=sys.stderr)
+
+        return JsonResponse({
+            "message": f"Data for {symbol} processed. Inserted: {inserted}, Updated: {updated}"
+        }, status=200)
+    
+
+def get_economic_data():
+    """ดึงข้อมูลหลายตัวชี้วัดเศรษฐกิจพร้อมกันจาก Alpha Vantage"""
+    # สร้าง URLs สำหรับแต่ละฟังก์ชัน
+    urls = {
+        "CPI": f"https://www.alphavantage.co/query?function=CPI&apikey={API_KEY}",
+        "REAL_GDP": f"https://www.alphavantage.co/query?function=REAL_GDP&apikey={API_KEY}",
+        "UNEMPLOYMENT": f"https://www.alphavantage.co/query?function=UNEMPLOYMENT&apikey={API_KEY}",
+    }
+
+    data = {}
+    # เรียก API ทั้ง 3 ตัว
+    for key, url in urls.items():
+        try:
+            response = requests.get(url)
+            response_data = response.json()
+
+            if 'Note' in response_data or 'Information' in response_data:
+                data[key] = {"error": "API limit reached or issue with the data."}
+            else:
+                data[key] = response_data
+        except Exception as e:
+            data[key] = {"error": str(e)}
+
+    return data
+
+@csrf_exempt
+def get_economic_indicators(request):
+    """API สำหรับดึงข้อมูลเศรษฐกิจทั้งหมดพร้อมกัน"""
+    if request.method == "GET":
+        # ดึงข้อมูลทั้งหมด
+        economic_data = get_economic_data()
+
+        return JsonResponse(economic_data, status=200)
+
+# ---------- Economic Indicators ----------
+def parse_econ_payload(payload: dict):
+    name = payload.get("name") or payload.get("Name") or ""
+    unit = payload.get("unit") or payload.get("Unit") or ""
+    rows = []
+    items = payload.get("data") or payload.get("Data") or payload.get("Historical Data")
+    if isinstance(items, list):
+        for row in items:
+            ds = row.get("date") or row.get("Date")
+            val = row.get("value") or row.get("Value")
+            if not ds:
+                continue
+            try:
+                d = date.fromisoformat(ds)
+            except Exception:
+                continue
+            try:
+                v = Decimal(str(val)) if val not in (None, "", "None") else None
+            except Exception:
+                v = None
+            rows.append((d, v))
+    return name, unit, rows
+
+@csrf_exempt
+def load_economic_indicators(request):
+    """
+    ดึง + บันทึกตัวชี้วัดเศรษฐกิจจาก Alpha Vantage → Postgres
+    แล้ว 'ซิงก์ไป ClickHouse ทันที' สำหรับแต่ละ indicator (เรียก WSL: /home/exit/sync_econ.sh <CODE>)
+
+    พารามิเตอร์:
+      - ?codes=CPI,REAL_GDP,UNEMPLOYMENT (คั่นด้วย comma)
+      - หรือใช้ซ้ำหลายตัว: ?code=CPI&code=REAL_GDP
+      - ?sync=0  เพื่อไม่ trigger sync ทันที (ให้ cron จัดการเอง)
+
+    ค่าดีฟอลต์เมื่อไม่ส่ง codes: ["CPI", "REAL_GDP", "UNEMPLOYMENT"]
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "GET only"}, status=405)
+
+    # ----- อ่านพารามิเตอร์ -----
+    default_codes = ["CPI", "REAL_GDP", "UNEMPLOYMENT"]
+
+    # รองรับทั้ง ?codes=... และ ?code=... ที่ซ้ำหลายตัว
+    codes_param = request.GET.get("codes")
+    codes_list  = request.GET.getlist("code")
+
+    codes = []
+    if codes_param:
+        codes.extend([c.strip().upper() for c in codes_param.split(",") if c.strip()])
+    if codes_list:
+        codes.extend([c.strip().upper() for c in codes_list if c.strip()])
+
+    if not codes:
+        codes = default_codes
+
+    # กันซ้ำและคงลำดับเดิม
+    seen = set()
+    uniq_codes = []
+    for c in codes:
+        if c not in seen:
+            seen.add(c)
+            uniq_codes.append(c)
+
+    # ควบคุมว่าจะ sync ทันทีไหม (ดีฟอลต์: sync)
+    do_sync = request.GET.get("sync", "1") != "0"
+
+    result = {
+        "inserted": 0,
+        "updated": 0,
+        "by_indicator": {}
+    }
+
+    for code in uniq_codes:
+        url = f"https://www.alphavantage.co/query?function={code}&apikey={API_KEY}"
+        status, payload = backoff_fetch(url)
+
+        # ถ้า key หาย/ติดลิมิต/ต้อง premium → ข้ามตัวนี้ไป
+        if status != 200:
+            result["by_indicator"][code] = {"error": f"http {status}"}
+            continue
+
+        name, unit, rows = parse_econ_payload(payload)
+        if not rows:
+            note = payload.get("Note") or payload.get("Information") or payload.get("Error Message") or str(payload)[:300]
+            result["by_indicator"][code] = {"error": note}
+            continue
+
+        indicator = ensure_indicator(code, name=name, unit=unit)
+
+        ins = 0
+        upd = 0
+        for d, v in rows:
+            # d คือ datetime.date (หรือ string 'YYYY-MM-DD'), v คือ Decimal/float
+            the_date = d if isinstance(d, date) else date.fromisoformat(str(d))
+            dd = ensure_date_dim(the_date)
+            obj, created = EconDailyFact.objects.update_or_create(
+                indicator=indicator,
+                date=dd,
+                defaults={
+                    "value": Decimal(str(v)),
+                    "source": "alpha"
+                }
+            )
+            if created:
+                ins += 1
+            else:
+                upd += 1
+
+        result["inserted"] += ins
+        result["updated"] += upd
+        result["by_indicator"][code] = {
+            "name": indicator.name,
+            "unit": indicator.unit,
+            "rows_in_payload": len(rows),
+            "inserted": ins,
+            "updated": upd,
+        }
+
+        # ----- Trigger sync ไป ClickHouse ทันทีต่อ indicator -----
+        if do_sync:
+            try:
+                proc = subprocess.run(
+                    ["wsl.exe", "bash", "-lc", f"/home/exit/sync_econ.sh {code}"],
+                    check=True, capture_output=True, text=True
+                )
+                result["by_indicator"][code]["ch_sync"] = "ok"
+                # (เลือกได้) เก็บ stdout สั้นๆ ไว้ดูดีบัก
+                if proc.stdout:
+                    result["by_indicator"][code]["ch_sync_out"] = proc.stdout.strip().splitlines()[-1][:200]
+            except subprocess.CalledProcessError as e:
+                result["by_indicator"][code]["ch_sync"] = "failed"
+                result["by_indicator"][code]["ch_sync_err"] = (e.stderr or e.stdout or "").strip()[:400]
+
+    return JsonResponse(result, status=200)
+
+
+
+
+# ---------- ClickHouse
+#clickhouse
+
+from django.http import JsonResponse
+from django.db import connections
+
+
+def stock_chart_page(request, ticker: str):
+    # 1) ดึงรายชื่อหุ้นสำหรับ dropdown แบบไม่ซ้ำ
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT s.ticker
+            FROM market.dim_symbol AS s
+            /* ถ้าต้องการเฉพาะตัวที่มีราคาจริง ให้ใช้ INNER JOIN fact แทน และยังคง DISTINCT */
+            -- INNER JOIN market.fact_price_daily f ON f.symbol_id = s.id
+            WHERE s.is_active = 1
+            ORDER BY s.ticker
+        """)
+        symbol_rows = cur.fetchall()
+    symbols = [r[0] for r in symbol_rows]
+
+    # หาก ticker ที่ขอมายังไม่มีในรายการ ให้โยน 404 (กันสะกดผิด)
+    if ticker not in symbols:
+        # ถ้าต้องการรองรับก็ข้ามเงื่อนไขนี้ได้
+        pass
+
+    # 2) ดึงข้อมูล “วันละ 1 แถว” และเอาเฉพาะ 30 วันล่าสุด
+    sql = """
+      SELECT
+        d.date,
+        argMax(f.open,      f.load_ts)  AS open,
+        argMax(f.high,      f.load_ts)  AS high,
+        argMax(f.low,       f.load_ts)  AS low,
+        argMax(f.close,     f.load_ts)  AS close,
+        argMax(f.adj_close, f.load_ts)  AS adj_close,
+        argMax(f.volume,    f.load_ts)  AS volume
+      FROM market.fact_price_daily f
+      JOIN market.dim_date  d ON d.id = f.date_id
+      JOIN market.dim_symbol s ON s.id = f.symbol_id
+      WHERE s.ticker = %(ticker)s
+      GROUP BY d.date
+      ORDER BY d.date DESC
+      LIMIT 30
+    """
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute(sql, {"ticker": ticker})
+        rows = cur.fetchall()
+
+    if not rows:
+        raise Http404(f"No data for ticker={ticker}")
+
+    # เรียงจากเก่า→ใหม่เพื่อให้กราฟอ่านง่าย
+    rows.reverse()
+
+    labels   = [r[0].isoformat() for r in rows]
+    opens    = [float(r[1]) if r[1] is not None else None for r in rows]
+    highs    = [float(r[2]) if r[2] is not None else None for r in rows]
+    lows     = [float(r[3]) if r[3] is not None else None for r in rows]
+    closes   = [float(r[4]) if r[4] is not None else None for r in rows]
+    adjclose = [float(r[5]) if r[5] is not None else None for r in rows]
+    volumes  = [int(r[6])   if r[6] is not None else None for r in rows]
+
+    context = {
+        "ticker": ticker,
+        "symbols": symbols,  # ส่งไปใช้กับ dropdown
+        "labels_json":   json.dumps(labels),
+        "opens_json":    json.dumps(opens),
+        "highs_json":    json.dumps(highs),
+        "lows_json":     json.dumps(lows),
+        "closes_json":   json.dumps(closes),
+        "adjclose_json": json.dumps(adjclose),
+        "volumes_json":  json.dumps(volumes),
+    }
+    return render(request, "stock_chart.html", context)
+
+def trading_dashboard(request, ticker: str):
+    sql = """
+      SELECT d.date, f.open, f.high, f.low, f.close, f.volume
+      FROM market.fact_price_daily f
+      JOIN market.dim_date d ON d.id = f.date_id
+      JOIN market.dim_symbol s ON s.id = f.symbol_id
+      WHERE s.ticker = %(ticker)s
+      ORDER BY d.date DESC
+      LIMIT 120
+    """
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute(sql, {"ticker": ticker})
+        rows = cur.fetchall()
+
+    if not rows:
+        raise Http404(f"No data for ticker={ticker}")
+
+    # เรียงจากเก่า -> ใหม่
+    rows = list(reversed(rows))
+
+    labels  = [r[0].isoformat() for r in rows]
+    opens   = [float(r[1]) if r[1] is not None else None for r in rows]
+    highs   = [float(r[2]) if r[2] is not None else None for r in rows]
+    lows    = [float(r[3]) if r[3] is not None else None for r in rows]
+    closes  = [float(r[4]) if r[4] is not None else None for r in rows]
+    volumes = [int(r[5])   if r[5] is not None else None for r in rows]
+
+    ctx = {
+        "ticker": ticker,
+        "labels_json":  json.dumps(labels),
+        "opens_json":   json.dumps(opens),
+        "highs_json":   json.dumps(highs),
+        "lows_json":    json.dumps(lows),
+        "closes_json":  json.dumps(closes),
+        "volumes_json": json.dumps(volumes),
+    }
+    return render(request, "trading_dashboard.html", ctx)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###การทำงานกับ Google Gemini API
+import os
+import google.generativeai as genai
+from django.db import connections
+from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+import json
+
+
+genai.configure(api_key="AIzaSyCv3HKt9M-SkeAv9Tk3JhJpmr7uH6s9j-A")
+model = genai.GenerativeModel("gemini-2.5-flash")
+
+def fetch_price_data(ticker: str, days: int = 30):
+    """
+    ดึง OHLCV วันละ 1 แถวล่าสุด (เลือกค่าล่าสุดด้วย argMax ตาม load_ts)
+    """
+    sql = """
+      SELECT
+        d.date,
+        argMax(f.open,      f.load_ts) AS open,
+        argMax(f.high,      f.load_ts) AS high,
+        argMax(f.low,       f.load_ts) AS low,
+        argMax(f.close,     f.load_ts) AS close,
+        argMax(f.adj_close, f.load_ts) AS adj_close,
+        argMax(f.volume,    f.load_ts) AS volume
+      FROM market.fact_price_daily f
+      JOIN market.dim_symbol s ON s.id=f.symbol_id
+      JOIN market.dim_date   d ON d.id=f.date_id
+      WHERE lower(s.ticker) = %(ticker)s
+      GROUP BY d.date
+      ORDER BY d.date DESC
+      LIMIT %(days)s
+    """
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute(sql, {"ticker": ticker.lower(), "days": days})
+        rows = cur.fetchall()
+
+    # เรียงเก่า -> ใหม่
+    return rows[::-1]
+
+def fetch_econ_data(code: str, months: int = 12):
+    sql = """
+      SELECT d.date, f.value
+      FROM market.fact_econ_daily f
+      JOIN market.dim_econ_indicator i ON i.id=f.indicator_id
+      JOIN market.dim_date d ON d.id=f.date_id
+      WHERE lower(i.code) = %(code)s
+      ORDER BY d.date DESC
+      LIMIT %(months)s
+    """
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute(sql, {"code": code.lower(), "months": months})
+        rows = cur.fetchall()
+    return rows[::-1]
+
+# def ask_ai_about_stock(ticker: str):
+#     prices = fetch_price_data(ticker)
+#     table_txt = "\n".join([f"{d} O:{o} H:{h} L:{l} C:{c} V:{v}" for d,o,h,l,c,v in prices])
+
+#     prompt = f"""
+#     ข้อมูลราคาหุ้น {ticker} 30 วันล่าสุด:
+#     {table_txt}
+
+#     ช่วยวิเคราะห์แนวโน้มสั้นๆ ว่ามีสัญญาณบวกหรือลบ?
+#     """
+#     resp = model.generate_content(prompt)
+#     return resp.text
+
+# def ask_ai_about_econ(indicator: str):
+#     econ = fetch_econ_data(indicator)
+#     table_txt = "\n".join([f"{d} {val}" for d,val in econ])
+
+#     prompt = f"""
+#     ข้อมูลเศรษฐกิจ ({indicator}) 12 เดือนล่าสุด:
+#     {table_txt}
+
+#     ช่วยสรุปว่ามีแนวโน้มขึ้นหรือลง และมีนัยสำคัญต่อเศรษฐกิจไทยหรือโลกอย่างไร?
+#     """
+#     resp = model.generate_content(prompt)
+#     return resp.text
+
+
+
+# from django.http import JsonResponse
+
+# def ai_stock_analysis(request, ticker: str):
+#     text = ask_ai_about_stock(ticker)
+#     return JsonResponse({"ticker": ticker, "analysis": text})
+
+# def ai_econ_analysis(request, code: str):
+#     text = ask_ai_about_econ(code)
+#     return JsonResponse({"indicator": code, "analysis": text})
+
+
+@csrf_exempt
+def ai_prompt_page(request):
+    """
+    แสดงหน้าเว็บที่มีช่องให้พิมพ์ prompt แล้วส่งไปให้ Gemini
+    """
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body.decode())
+            user_prompt = data.get("prompt", "")
+            if not user_prompt:
+                return JsonResponse({"error": "empty prompt"}, status=400)
+
+            resp = model.generate_content(user_prompt)
+            return JsonResponse({"response": resp.text})
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    # GET → render หน้าเว็บ
+    return render(request, "ai_prompt.html")
+
+
+def ch_all_tickers():
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT s.ticker
+            FROM market.dim_symbol s
+            WHERE s.is_active = 1
+            ORDER BY s.ticker
+        """)
+        return [r[0] for r in cur.fetchall()]
+
+def ch_fetch_price(ticker: str, days: int = 30):
+    """
+    ดึง OHLCV วันละ 1 แถวล่าสุด/วัน (เลือกค่าล่าสุดด้วย argMax ตาม load_ts)
+    คืนค่าจัดเรียงเก่า→ใหม่ เพื่อให้ prompt อ่านง่าย
+    """
+    sql = """
+      SELECT
+        d.date,
+        argMax(f.open,      f.load_ts) AS open,
+        argMax(f.high,      f.load_ts) AS high,
+        argMax(f.low,       f.load_ts) AS low,
+        argMax(f.close,     f.load_ts) AS close,
+        argMax(f.adj_close, f.load_ts) AS adj_close,
+        argMax(f.volume,    f.load_ts) AS volume
+      FROM market.fact_price_daily f
+      JOIN market.dim_symbol s ON s.id=f.symbol_id
+      JOIN market.dim_date   d ON d.id=f.date_id
+      WHERE lower(s.ticker) = %(ticker)s
+      GROUP BY d.date
+      ORDER BY d.date DESC
+      LIMIT %(days)s
+    """
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute(sql, {"ticker": ticker.lower(), "days": days})
+        rows = cur.fetchall()
+
+    # เรียงเก่า -> ใหม่
+    rows.reverse()
+    return rows  # [(date, open, high, low, close, adj_close, volume), ...]
+
+def ch_fetch_econ(code: str, npoints: int = 12):
+    """
+    ดึงค่าตัวชี้วัดเศรษฐกิจ 12 จุดล่าสุด (วันละ 1 แถว) เรียงเก่า→ใหม่
+    """
+    sql = """
+      SELECT
+        d.date,
+        argMax(f.value, f.load_ts) AS value
+      FROM market.fact_econ_daily f
+      JOIN market.dim_econ_indicator i ON i.id=f.indicator_id
+      JOIN market.dim_date d ON d.id=f.date_id
+      WHERE lower(i.code) = %(code)s
+      GROUP BY d.date
+      ORDER BY d.date DESC
+      LIMIT %(n)s
+    """
+    with connections["clickhouse"].cursor() as cur:
+        cur.execute(sql, {"code": code.lower(), "n": npoints})
+        rows = cur.fetchall()
+    rows.reverse()
+    return rows  # [(date, value), ...]
+
+# ---------- Page: เลือกหุ้น + prompt + ผล AI ----------
+def ai_stock_page(request):
+    symbols = ch_all_tickers()
+    # preselect ตัวแรกถ้ามี
+    return render(request, "ai_stock.html", {"symbols": symbols, "default_days": 30})
+
+# ---------- API: วิเคราะห์หุ้นด้วยข้อมูลจาก ClickHouse + prompt ผู้ใช้ ----------
+from django.http import JsonResponse, Http404
+from django.views.decorators.csrf import csrf_exempt
+import json
+
+@csrf_exempt
+def ai_analyze_stock(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    # parse body
+    try:
+        payload = json.loads(request.body.decode())
+    except Exception:
+        return JsonResponse({"error": "invalid json body"}, status=400)
+
+    ticker     = (payload.get("ticker") or "").strip()
+    days       = int(payload.get("days") or 30)
+    user_prompt= (payload.get("prompt") or "").strip()
+    econ_code  = (payload.get("econ_code") or "").strip()
+
+    if not ticker:
+        return JsonResponse({"error": "ticker is required"}, status=400)
+
+    # 1) ดึงจาก CH (วันละ 1 แถวล่าสุดด้วย argMax)
+    rows = ch_fetch_price(ticker, days=days)
+    if not rows:
+        raise Http404(f"No data for ticker={ticker}")
+
+    # แปลงเป็นข้อความ (เก่า→ใหม่)
+    # rows: (date, open, high, low, close, adj_close, volume)
+    price_lines = []
+    for d, o, h, l, c, adjc, v in rows:
+        o = float(o) if o is not None else None
+        h = float(h) if h is not None else None
+        l = float(l) if l is not None else None
+        c = float(c) if c is not None else None
+        adjc = float(adjc) if adjc is not None else None
+        v = int(v) if v is not None else 0
+        price_lines.append(f"{d} O:{o} H:{h} L:{l} C:{c} AdjC:{adjc} V:{v}")
+    price_block = "\n".join(price_lines)
+
+    econ_block = ""
+    if econ_code:
+        econ = ch_fetch_econ(econ_code, npoints=12)
+        if econ:
+            econ_lines = [f"{d} {float(val) if val is not None else 'null'}" for d, val in econ]
+            econ_block = "\n\nตัวชี้วัดเศรษฐกิจ ({}) 12 จุดล่าสุด:\n{}".format(econ_code, "\n".join(econ_lines))
+
+    # 2) prompt สำหรับ Gemini
+    prompt = (
+        f"คุณเป็นผู้ช่วยวิเคราะห์ข้อมูลตลาดทุน\n"
+        f"โปรดวิเคราะห์ราคาหุ้น {ticker} จากข้อมูล OHLCV {days} วันล่าสุดที่ให้ (เรียงเก่า→ใหม่) "
+        f"โดยสรุปแนวโน้มหลัก, แนวรับ/แนวต้านใกล้ ๆ, โมเมนตัม, ความเสี่ยง และบันทึกสั้น ๆ ที่ปฏิบัติได้\n\n"
+        f"ข้อมูลราคา:\n{price_block}"
+        f"{econ_block}\n\n"
+        f"เงื่อนไข: อย่าคิดตัวเลขที่ไม่มีในข้อมูล, อ้างอิงวันที่ชัดเจน, เขียนเป็น bullet, "
+        f"หลีกเลี่ยงการให้คำแนะนำซื้อขายตรง ๆ (เน้นข้อมูลเชิงพรรณนา/การสังเกต)\n"
+    )
+    if user_prompt:
+        prompt += f"\nคำขอเพิ่มเติมจากผู้ใช้: {user_prompt}\n"
+
+    # 3) เรียก Gemini
+    try:
+        resp = model.generate_content(prompt)
+        answer = resp.text
+    except Exception as e:
+        return JsonResponse({"error": f"gemini: {e}"}, status=500)
+
+    # 4) response (มี preview ไว้เช็ค)
+    return JsonResponse({
+        "ticker": ticker,
+        "days": days,
+        "used_econ": econ_code or None,
+        "analysis": answer,
+        "preview": {
+            "rows_returned": len(rows),
+            "first_lines": price_lines[:5],
+        }
+    }, status=200)

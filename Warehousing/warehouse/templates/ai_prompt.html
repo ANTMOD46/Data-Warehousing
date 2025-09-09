@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ถาม-ตอบ AI (Gemini)</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 20px; }
+    h1 { margin-bottom: 10px; }
+    textarea { width: 100%; height: 100px; padding: 8px; font-family: inherit; }
+    button { padding: 8px 14px; margin-top: 8px; }
+    .result { margin-top: 20px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <h1>ถาม-ตอบ AI (Gemini)</h1>
+
+  <textarea id="prompt" placeholder="พิมพ์คำถามหรือคำสั่งสำหรับ AI ..."></textarea><br>
+  <button id="sendBtn">ถาม AI</button>
+
+  <div id="output" class="result" style="display:none;"></div>
+
+  <script>
+    const btn = document.getElementById("sendBtn");
+    const promptBox = document.getElementById("prompt");
+    const output = document.getElementById("output");
+
+    btn.addEventListener("click", async () => {
+      const prompt = promptBox.value.trim();
+      if (!prompt) return alert("กรุณากรอก prompt");
+
+      output.style.display = "block";
+      output.innerHTML = "⌛ กำลังถาม AI ...";
+
+      try {
+        const res = await fetch("", {  // ส่ง POST ไปยัง view เดิม (ai_prompt_page)
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({prompt})
+        });
+        const data = await res.json();
+        if (data.response) {
+          output.innerHTML = "<b>คำตอบ AI:</b><br>" + data.response.replace(/\n/g,"<br>");
+        } else {
+          output.innerHTML = "⚠️ Error: " + (data.error || "unknown");
+        }
+      } catch(err) {
+        output.innerHTML = "⚠️ Exception: " + err;
+      }
+    });
+  </script>
+</body>
+</html>

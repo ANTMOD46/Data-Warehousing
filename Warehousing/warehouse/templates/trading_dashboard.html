@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Trading — {{ ticker }}</title>
+  <!-- Chart.js + Financial plugin (แท่งเทียน) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 20px; color: #111; }
+    h1 { margin: 0 0 6px; }
+    .sub { color: #666; margin-bottom: 12px; }
+    .row { display: grid; gap: 14px; max-width: 1100px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; background: #fafafa; }
+    canvas { width: 100%; height: 360px; }
+    .small canvas { height: 220px; }
+    form { margin-bottom: 12px; display: flex; gap: 8px; }
+    input[type="text"] { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; min-width: 220px; }
+    button { padding: 8px 12px; border: 0; border-radius: 8px; cursor: pointer; background: #111827; color: #fff; }
+  </style>
+</head>
+<body>
+  <h1>Trading Dashboard — {{ ticker }}</h1>
+  <div class="sub">Candlestick + MA(20/50), Volume, MACD, RSI</div>
+
+  <form id="tickerForm">
+    <input id="tickerInput" type="text" placeholder="เช่น AAPL หรือ PTT.BK" value="{{ ticker }}" />
+    <button type="submit">Go</button>
+  </form>
+
+  <div class="row">
+    <div class="card"><canvas id="candles"></canvas></div>
+    <div class="card small"><canvas id="volume"></canvas></div>
+    <div class="card small"><canvas id="macd"></canvas></div>
+    <div class="card small"><canvas id="rsi"></canvas></div>
+  </div>
+
+  <script>
+    // ====== Data from server ======
+    const labels  = JSON.parse('{{ labels_json|escapejs }}');   // ISO dates
+    const opens   = JSON.parse('{{ opens_json|escapejs }}');
+    const highs   = JSON.parse('{{ highs_json|escapejs }}');
+    const lows    = JSON.parse('{{ lows_json|escapejs }}');
+    const closes  = JSON.parse('{{ closes_json|escapejs }}');
+    const volumes = JSON.parse('{{ volumes_json|escapejs }}');
+    const TICKER  = '{{ ticker|escapejs }}';
+
+    // ====== Helpers: indicators ======
+    const SMA = (arr, n) => arr.map((_, i) => {
+      if (i+1 < n) return null;
+      let s = 0; for (let k=i-n+1; k<=i; k++) s += arr[k];
+      return s / n;
+    });
+
+    const EMA = (arr, n) => {
+      const k = 2/(n+1);
+      const out = new Array(arr.length).fill(null);
+      // seed: SMA of first n
+      let seed = 0;
+      for (let i=0;i<arr.length;i++){
+        const v = arr[i];
+        if (v == null) { out[i]=null; continue; }
+        if (i < n-1) { out[i]=null; seed += v; continue; }
+        if (i === n-1) { seed = seed / n; out[i]=seed; continue; }
+        out[i] = v * k + out[i-1]*(1-k);
+      }
+      return out;
+    };
+
+    const MACD = (close) => {
+      const ema12 = EMA(close, 12);
+      const ema26 = EMA(close, 26);
+      const macd  = close.map((_,i)=> (ema12[i]==null||ema26[i]==null)?null:(ema12[i]-ema26[i]));
+      const signal = EMA(macd.map(v=>v==null?0:v), 9).map((v,i)=> macd[i]==null?null:v); // align nulls
+      const hist = macd.map((v,i)=> (v==null||signal[i]==null)?null:(v - signal[i]));
+      return { macd, signal, hist };
+    };
+
+    const RSI = (close, n=14) => {
+      const r = new Array(close.length).fill(null);
+      let gain=0, loss=0;
+      for (let i=1;i<close.length;i++){
+        const ch = close[i] - close[i-1];
+        const g = Math.max(ch, 0), l = Math.max(-ch, 0);
+        if (i <= n) { gain += g; loss += l; if (i===n){ const RS = (gain/n)/((loss/n)||1e-12); r[i]=100 - 100/(1+RS);} }
+        else {
+          gain = (gain*(n-1) + g)/n;
+          loss = (loss*(n-1) + l)/n;
+          const RS = gain / (loss || 1e-12);
+          r[i] = 100 - 100/(1+RS);
+        }
+      }
+      return r;
+    };
+
+    // ====== Prep datasets ======
+    const candlesData = labels.map((t,i)=> ({
+      x: t,
+      o: opens[i], h: highs[i], l: lows[i], c: closes[i]
+    }));
+    const ma20 = SMA(closes, 20);
+    const ma50 = SMA(closes, 50);
+    const {macd, signal, hist} = MACD(closes);
+    const rsi14 = RSI(closes, 14);
+
+    // ====== Candlestick + MA ======
+    const ctx1 = document.getElementById('candles').getContext('2d');
+    const chart1 = new Chart(ctx1, {
+      type: 'candlestick',
+      data: {
+        datasets: [
+          { label: `Candles (${TICKER})`, data: candlesData },
+          { type: 'line', label: 'MA20', data: labels.map((t,i)=>({x:t,y:ma20[i]})), borderWidth: 2, pointRadius: 0 },
+          { type: 'line', label: 'MA50', data: labels.map((t,i)=>({x:t,y:ma50[i]})), borderWidth: 2, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { ticks: { maxRotation: 0, autoSkip: true }, time: { unit: 'day' } },
+          y: { title: { display: true, text: 'Price' } }
+        },
+        plugins: { legend: { display: true } }
+      }
+    });
+
+    // ====== Volume (bar) ======
+    const ctx2 = document.getElementById('volume').getContext('2d');
+    const chart2 = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label: 'Volume', data: volumes, borderWidth: 0 }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { ticks: { maxRotation: 0, autoSkip: true } },
+          y: { title: { display: true, text: 'Volume' }, beginAtZero: true }
+        },
+        plugins: { legend: { display: true } }
+      }
+    });
+
+    // ====== MACD ======
+    const ctx3 = document.getElementById('macd').getContext('2d');
+    const chart3 = new Chart(ctx3, {
+      data: {
+        labels,
+        datasets: [
+          { type: 'line', label: 'MACD', data: macd, borderWidth: 2, pointRadius: 0 },
+          { type: 'line', label: 'Signal', data: signal, borderWidth: 2, pointRadius: 0 },
+          { type: 'bar',  label: 'Hist', data: hist, borderWidth: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { ticks: { maxRotation: 0, autoSkip: true } },
+          y: { title: { display: true, text: 'MACD' } }
+        },
+        plugins: { legend: { display: true } }
+      }
+    });
+
+    // ====== RSI ======
+    const ctx4 = document.getElementById('rsi').getContext('2d');
+    const chart4 = new Chart(ctx4, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'RSI(14)', data: rsi14, borderWidth: 2, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { ticks: { maxRotation: 0, autoSkip: true } },
+          y: {
+            min: 0, max: 100,
+            ticks: { stepSize: 20 },
+            title: { display: true, text: 'RSI' }
+          }
+        },
+        plugins: { legend: { display: true } }
+      }
+    });
+
+    // เปลี่ยน ticker จากฟอร์ม
+    document.getElementById('tickerForm').addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const t = document.getElementById('tickerInput').value.trim();
+      if (!t) return;
+      window.location.href = `/ch/trading/${encodeURIComponent(t)}/`;
+    });
+  </script>
+</body>
+</html>

@@ -82,7 +82,16 @@ DATABASES = {
         "PASSWORD": "Warehouse59",                  # รหัสผ่าน
         "HOST": "localhost",                        # ที่อยู่ของฐานข้อมูล
         "PORT": "5432",                             # พอร์ตของ PostgreSQL
-    }
+    },
+    'clickhouse': {
+        'ENGINE': 'clickhouse_backend.backend',  # ใช้ clickhouse-backend
+        'NAME': 'market',  # ชื่อฐานข้อมูลที่ใช้ใน ClickHouse
+        'USER': 'default',  # ชื่อผู้ใช้
+        'PASSWORD': '',  # รหัสผ่าน (ถ้าไม่มี)
+        'HOST': 'localhost',  # ตั้งค่าเป็น localhost
+        'PORT': '9000',  # พอร์ต ClickHouse
+        'OPTIONS': {'settings': {'use_numpy': False}},
+    },
 }
 
 
