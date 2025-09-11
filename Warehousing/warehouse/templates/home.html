@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>หน้าแรก | Data Warehousing</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #0b1320; color: #e6edf3; }
+    header { padding: 24px; background: #111a2b; border-bottom: 1px solid #1f2a44; }
+    header h1 { margin: 0; font-size: 22px; }
+    main { padding: 24px; max-width: 1000px; margin: 0 auto; }
+    section { background: #0f1a2e; border: 1px solid #1f2a44; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    h2 { margin: 0 0 8px; font-size: 18px; }
+    p { margin: 6px 0 12px; color: #c9d1d9; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input[type="text"] { padding: 10px 12px; border-radius: 8px; border: 1px solid #2b3553; background: #0b1320; color: #e6edf3; }
+    button, a.btn { padding: 10px 14px; border-radius: 8px; border: 1px solid #2b3553; background: #1b2b4b; color: #e6edf3; cursor: pointer; text-decoration: none; display: inline-block; }
+    button:hover, a.btn:hover { background: #27406f; }
+    .hint { font-size: 12px; color: #9fb1c7; }
+    pre { white-space: pre-wrap; background: #0b1320; border: 1px solid #1f2a44; padding: 12px; border-radius: 8px; overflow-x: auto; color: #d1e3ff; }
+    ul { margin: 8px 0 0 18px; }
+    .small { font-size: 13px; color: #a8b3c6; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Data Warehousing — หน้าแรก</h1>
+    <div class="small">สรุปวิธีใช้งานระบบอย่างรวดเร็ว พร้อมปุ่มลัดไปยังหน้าสำคัญ</div>
+  </header>
+  <main>
+    <section>
+      <h2>วิธีการใช้งานคร่าว ๆ</h2>
+      <ul>
+        <li>1) เรียกข้อมูลหุ้นที่ต้องการจะดู</li>
+        <li>2) โหลดข้อมูลตัวชี้วัดเศรษฐกิจ (economic indicators)</li>
+        <li>3) เลือกข้อมูล/หน้าที่ต้องการจะดู (กราฟ)</li>
+        <li>4) สอบถามข้อมูล/ขอวิเคราะห์กับ AI</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>1) โหลดราคาหุ้นที่ต้องการ</h2>
+      <p class="hint">พิมพ์สัญลักษณ์หุ้น (เช่น AAPL, MSFT) แล้วกดโหลด ระบบจะดึงจาก Alpha Vantage และบันทึกลงคลังข้อมูล</p>
+      <div class="row">
+        <input id="ticker" type="text" placeholder="เช่น AAPL" />
+        <button onclick="loadStock()">โหลดราคาหุ้น</button>
+        <button onclick="loadStock('AAPL')">ตัวอย่าง: AAPL</button>
+      </div>
+      <pre id="stockResult" style="margin-top:10px; display:none"></pre>
+    </section>
+
+    <section>
+      <h2>2) โหลดข้อมูลเศรษฐกิจ</h2>
+      <p class="hint">กดปุ่มเพื่อดึงตัวชี้วัดยอดนิยม (CPI, REAL_GDP, UNEMPLOYMENT) แล้วบันทึกลงคลังข้อมูล</p>
+      <div class="row">
+        <button onclick="loadEcon()">โหลด Economic Indicators</button>
+      </div>
+      <pre id="econResult" style="margin-top:10px; display:none"></pre>
+    </section>
+
+    <section>
+      <h2>3) เลือกดูข้อมูล</h2>
+      <p class="hint">พิมพ์สัญลักษณ์หุ้นและไปยังหน้ากราฟ</p>
+      <div class="row">
+        <input id="viewTicker" type="text" placeholder="เช่น AAPL" />
+        <a class="btn" href="#" onclick="goChart()">ดูกราฟ</a>
+        <span class="hint">หรือใส่ path ตรง: /ch/chart/<i>TICKER</i></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>4) คุยกับ AI</h2>
+      <p class="hint">ไปที่หน้า AI เพื่อเลือกหุ้นและพิมพ์คำถาม หรือเปิดหน้า Prompt อย่างเดียว</p>
+      <div class="row">
+        <a class="btn" href="/ai/stock/">ไปหน้า AI วิเคราะห์หุ้น</a>
+      </div>
+    </section>
+
+    <section>
+      <h2>ลิงก์ทางลัดอื่น ๆ</h2>
+      <div class="row">
+        <a class="btn" href="/get-economic-indicators/" target="_blank">ดูข้อมูลเศรษฐกิจ (JSON)</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function loadStock(symbol) {
+      const t = (symbol || document.getElementById('ticker').value || '').trim();
+      if (!t) { alert('กรุณาใส่สัญลักษณ์หุ้น'); return; }
+      const resEl = document.getElementById('stockResult');
+      resEl.style.display = 'block';
+      resEl.textContent = 'กำลังโหลด...';
+      try {
+        const r = await fetch(`/load-stock-data/${encodeURIComponent(t)}/`);
+        const j = await r.json();
+        resEl.textContent = JSON.stringify(j, null, 2);
+      } catch (e) {
+        resEl.textContent = 'เกิดข้อผิดพลาด: ' + e;
+      }
+    }
+
+    async function loadEcon() {
+      const resEl = document.getElementById('econResult');
+      resEl.style.display = 'block';
+      resEl.textContent = 'กำลังโหลด...';
+      try {
+        const r = await fetch('/load-economic-indicators/');
+        const j = await r.json();
+        resEl.textContent = JSON.stringify(j, null, 2);
+      } catch (e) {
+        resEl.textContent = 'เกิดข้อผิดพลาด: ' + e;
+      }
+    }
+
+    function goChart() {
+      const t = (document.getElementById('viewTicker').value || '').trim();
+      if (!t) { alert('กรุณาใส่สัญลักษณ์หุ้น'); return; }
+      window.location.href = `/ch/chart/${encodeURIComponent(t)}/`;
+    }
+    // ปุ่ม Trading Dashboard ถูกนำออกตามคำขอ
+  </script>
+</body>
+</html>

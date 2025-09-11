@@ -21,6 +21,11 @@ ALPHAVANTAGE_API_KEY = "<LGI5OGYSS30VMFIT>"
 
 
 
+def home(request):
+    """หน้าแรกอธิบายการใช้งานคร่าว ๆ และปุ่มลัดไปฟังก์ชันหลัก"""
+    return render(request, "home.html")
+
+
 def build_api_symbol(ticker: str, exchange_code: str | None) -> str:
     t = ticker.upper()
     ex = (exchange_code or "").upper()
@@ -499,44 +504,6 @@ def stock_chart_page(request, ticker: str):
         "volumes_json":  json.dumps(volumes),
     }
     return render(request, "stock_chart.html", context)
-
-def trading_dashboard(request, ticker: str):
-    sql = """
-      SELECT d.date, f.open, f.high, f.low, f.close, f.volume
-      FROM market.fact_price_daily f
-      JOIN market.dim_date d ON d.id = f.date_id
-      JOIN market.dim_symbol s ON s.id = f.symbol_id
-      WHERE s.ticker = %(ticker)s
-      ORDER BY d.date DESC
-      LIMIT 120
-    """
-    with connections["clickhouse"].cursor() as cur:
-        cur.execute(sql, {"ticker": ticker})
-        rows = cur.fetchall()
-
-    if not rows:
-        raise Http404(f"No data for ticker={ticker}")
-
-    # เรียงจากเก่า -> ใหม่
-    rows = list(reversed(rows))
-
-    labels  = [r[0].isoformat() for r in rows]
-    opens   = [float(r[1]) if r[1] is not None else None for r in rows]
-    highs   = [float(r[2]) if r[2] is not None else None for r in rows]
-    lows    = [float(r[3]) if r[3] is not None else None for r in rows]
-    closes  = [float(r[4]) if r[4] is not None else None for r in rows]
-    volumes = [int(r[5])   if r[5] is not None else None for r in rows]
-
-    ctx = {
-        "ticker": ticker,
-        "labels_json":  json.dumps(labels),
-        "opens_json":   json.dumps(opens),
-        "highs_json":   json.dumps(highs),
-        "lows_json":    json.dumps(lows),
-        "closes_json":  json.dumps(closes),
-        "volumes_json": json.dumps(volumes),
-    }
-    return render(request, "trading_dashboard.html", ctx)
 
 
 
