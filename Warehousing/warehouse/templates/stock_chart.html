@@ -2,110 +2,576 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
-  <title>Stock Chart — {{ ticker }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ ticker }} — Stock Chart Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
   <style>
-    body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 24px; }
-    .toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
-    select, input[type="text"] { padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; min-width: 220px; }
-    button { padding: 8px 12px; border: 0; border-radius: 8px; cursor: pointer; background: #111827; color: #fff; }
-    .panel { max-width: 1100px; background: #fafafa; border: 1px solid #e5e5e5; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-    canvas { width: 100%; height: 360px; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #2d1b4e 100%);
+      color: #fff;
+      padding: 20px;
+      min-height: 100vh;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Animated background particles */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: 
+        radial-gradient(circle at 20% 30%, rgba(138, 43, 226, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(65, 105, 225, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(72, 61, 139, 0.1) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+      animation: float 20s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(30px, -30px); }
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 50%, #3b82f6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      animation: glow 3s ease-in-out infinite;
+    }
+
+    @keyframes glow {
+      0%, 100% { filter: drop-shadow(0 0 20px rgba(167, 139, 250, 0.4)); }
+      50% { filter: drop-shadow(0 0 30px rgba(96, 165, 250, 0.6)); }
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 1rem;
+      color: #a5b4fc;
+      margin-bottom: 30px;
+      font-weight: 300;
+    }
+
+    .controls-section {
+      text-align: center;
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(167, 139, 250, 0.2);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    select, button {
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: none;
+      margin: 5px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+    }
+
+    select {
+      background: rgba(167, 139, 250, 0.15);
+      color: #fff;
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      cursor: pointer;
+    }
+
+    select:hover {
+      background: rgba(167, 139, 250, 0.25);
+      border-color: rgba(167, 139, 250, 0.5);
+    }
+
+    button {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .timeframe-btn {
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: rgba(167, 139, 250, 0.1);
+      color: #c4b5fd;
+      cursor: pointer;
+      border: 1px solid rgba(167, 139, 250, 0.2);
+      font-weight: 500;
+    }
+
+    .timeframe-btn:hover {
+      background: rgba(167, 139, 250, 0.2);
+      border-color: rgba(167, 139, 250, 0.4);
+    }
+
+    .timeframe-btn.active {
+      background: linear-gradient(135deg, #a78bfa 0%, #818cf8 100%);
+      color: #fff;
+      font-weight: 700;
+      border-color: transparent;
+      box-shadow: 0 4px 15px rgba(167, 139, 250, 0.5);
+    }
+
+    /* Summary Section */
+    .summary-section {
+      margin-top: 30px;
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(167, 139, 250, 0.2);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .summary-section h3 {
+      background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 20px;
+      font-size: 1.6rem;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      color: #e0e7ff;
+      font-size: 0.95rem;
+    }
+
+    .summary-table th {
+      text-align: left;
+      background: rgba(167, 139, 250, 0.15);
+      color: #c4b5fd;
+      padding: 12px 15px;
+      border-bottom: 2px solid rgba(167, 139, 250, 0.3);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 0.5px;
+    }
+
+    .summary-table td {
+      padding: 15px;
+      border-bottom: 1px solid rgba(167, 139, 250, 0.1);
+      vertical-align: top;
+    }
+
+    .summary-table tr {
+      transition: all 0.3s ease;
+    }
+
+    .summary-table tr:hover {
+      background: rgba(167, 139, 250, 0.08);
+      transform: translateX(5px);
+    }
+
+    .summary-table .value {
+      display: inline-block;
+      background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 700;
+      margin-top: 5px;
+      font-size: 1.1rem;
+    }
+
+    /* Charts */
+    .charts {
+      margin-top: 30px;
+      display: grid;
+      gap: 25px;
+    }
+
+    .chart-card {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(20px);
+      padding: 25px;
+      border-radius: 20px;
+      border: 1px solid rgba(167, 139, 250, 0.2);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    .chart-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 40px rgba(139, 92, 246, 0.3);
+      border-color: rgba(167, 139, 250, 0.4);
+    }
+
+    .chart-title {
+      font-size: 1.3rem;
+      background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    .chart-desc {
+      font-size: 0.9rem;
+      color: #a5b4fc;
+      margin-bottom: 15px;
+      line-height: 1.6;
+      padding-left: 10px;
+      border-left: 3px solid rgba(167, 139, 250, 0.3);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(135deg, #a78bfa 0%, #818cf8 100%);
+    }
   </style>
 </head>
 <body>
-  <h1>Stock — {{ ticker }}</h1>
+  <div class="container">
+    <h2>📈 {{ ticker }} Stock Chart</h2>
+    <div class="subtitle">
+      แสดงกราฟราคาหุ้นและตัวชี้วัดทางเทคนิคจากข้อมูลจริงใน ClickHouse
+    </div>
 
-  <div class="toolbar">
-    <!-- Dropdown รายชื่อหุ้น (มาจาก SELECT DISTINCT ใน view) -->
-    <select id="tickerSelect">
-      {% for t in symbols %}
-        <option value="{{ t }}" {% if t == ticker %}selected{% endif %}>{{ t }}</option>
+    <div class="controls-section">
+      <select id="tickerSelect">
+        {% for t in symbols %}
+          <option value="{{ t }}" {% if t == ticker %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+      <button id="goBtn">ดูกราฟ</button>
+
+      {% for key in periods %}
+        <button class="timeframe-btn {% if timeframe == key %}active{% endif %}"
+                onclick="changePeriod('{{ key }}')">{{ key }}</button>
       {% endfor %}
-    </select>
+    </div>
 
-    <!-- กล่องพิมพ์ + autocomplete -->
-    <input id="tickerInput" list="tickerList" placeholder="พิมพ์ค้นหา..." value="{{ ticker }}">
-    <datalist id="tickerList">
-      {% for t in symbols %}
-        <option value="{{ t }}"></option>
-      {% endfor %}
-    </datalist>
+    <!-- Summary Section -->
+    <div class="summary-section">
+      <h3>📊 สรุปภาพรวม</h3>
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>รายการ</th>
+            <th>ความหมาย</th>
+            <th>ใช้ดูอะไร</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>📊 <strong>การเปลี่ยนแปลง</strong><br><span class="value">{{ change_text }}</span></td>
+            <td>ส่วนต่างราคาจากวันก่อนหน้า</td>
+            <td>ดูแนวโน้มระยะสั้น</td>
+          </tr>
+          <tr>
+            <td>🏔️ <strong>52W High</strong><br><span class="value">{{ high_52w|floatformat:2 }}</span></td>
+            <td>ราคาสูงสุดในรอบปี</td>
+            <td>ดูแนวโน้มระยะยาว (ขาขึ้นหรือไม่)</td>
+          </tr>
+          <tr>
+            <td>🏔️ <strong>52W Low</strong><br><span class="value">{{ low_52w|floatformat:2 }}</span></td>
+            <td>ราคาต่ำสุดในรอบปี</td>
+            <td>ดูแนวรับของราคา</td>
+          </tr>
+          <tr>
+            <td>📦 <strong>Avg Volume</strong><br><span class="value">{{ avg_volume|floatformat:2 }}M</span></td>
+            <td>ปริมาณซื้อขายเฉลี่ย</td>
+            <td>ดูความสนใจของตลาดและสภาพคล่อง</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-    <button id="goBtn">ดูกราฟ</button>
-  </div>
+    <!-- Charts -->
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-title">💹 ราคาหุ้น (Close Price)</div>
+        <div class="chart-desc">
+          แกน X = วัน, แกน Y = ราคาปิด (USD) ของหุ้น {{ ticker }} ในแต่ละวัน  
+          เส้นกราฟแสดงแนวโน้มการเปลี่ยนแปลงของราคาปิดล่าสุด
+        </div>
+        <canvas id="priceChart" height="400"></canvas>
+      </div>
 
-  <div class="panel">
-    <canvas id="ohlcChart"></canvas>
-  </div>
-  <div class="panel">
-    <canvas id="volChart"></canvas>
+      <div class="chart-card">
+        <div class="chart-title">📊 ปริมาณการซื้อขาย (Volume)</div>
+        <div class="chart-desc">
+          แกน X = วัน, แกน Y = จำนวนหุ้นที่มีการซื้อขายในแต่ละวัน  
+          บาร์สูงแปลว่ามีการซื้อขายมาก (นักลงทุนให้ความสนใจสูง)
+        </div>
+        <canvas id="volChart" height="200"></canvas>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">📈 RSI (Relative Strength Index)</div>
+        <div class="chart-desc">
+          RSI เป็นดัชนีวัด "แรงซื้อแรงขาย"  
+          ค่า RSI > 70 = หุ้นอยู่ในภาวะซื้อมาก (Overbought)  
+          ค่า RSI < 30 = หุ้นอยู่ในภาวะขายมาก (Oversold)
+        </div>
+        <canvas id="rsiChart" height="150"></canvas>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">📉 MACD (Moving Average Convergence Divergence)</div>
+        <div class="chart-desc">
+          MACD วัดความเร็วของการเปลี่ยนแปลงราคา  
+          - เส้น MACD (สีเขียว) = ส่วนต่างของ EMA 12 และ EMA 26  
+          - เส้น Signal (สีแดง) = EMA 9 ของ MACD  
+          เมื่อ MACD ตัดขึ้นเหนือ Signal → แนวโน้มขาขึ้น  
+          เมื่อ MACD ตัดลงใต้ Signal → แนวโน้มขาลง
+        </div>
+        <canvas id="macdChart" height="150"></canvas>
+      </div>
+    </div>
   </div>
 
   <script>
-    // ==== Data from server (already de-duplicated/day) ====
-    const labels    = JSON.parse('{{ labels_json|escapejs }}');      // วันที่เรียงจากเก่า->ใหม่
-    const opens     = JSON.parse('{{ opens_json|escapejs }}');
-    const highs     = JSON.parse('{{ highs_json|escapejs }}');
-    const lows      = JSON.parse('{{ lows_json|escapejs }}');
-    const closes    = JSON.parse('{{ closes_json|escapejs }}');
-    const adjCloses = JSON.parse('{{ adjclose_json|escapejs }}');
-    const volumes   = JSON.parse('{{ volumes_json|escapejs }}');
+    const labels  = JSON.parse('{{ labels_json|escapejs }}');
+    const closes  = JSON.parse('{{ closes_json|escapejs }}');
+    const volumes = JSON.parse('{{ volumes_json|escapejs }}');
+    const rsi     = JSON.parse('{{ rsi_json|escapejs }}');
+    const macd    = JSON.parse('{{ macd_json|escapejs }}');
+    const signal  = JSON.parse('{{ signal_json|escapejs }}');
 
-    // ==== OHLC/Adj ====
-    const ohlcCtx = document.getElementById('ohlcChart').getContext('2d');
-    new Chart(ohlcCtx, {
+    Chart.defaults.color = '#c4b5fd';
+    Chart.defaults.borderColor = 'rgba(167, 139, 250, 0.2)';
+
+    // Price Chart
+    new Chart(document.getElementById("priceChart"), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Close Price',
+          data: closes,
+          borderColor: '#a78bfa',
+          backgroundColor: 'rgba(167, 139, 250, 0.2)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          borderWidth: 3
+        }]
+      },
+      options: {
+        plugins: { 
+          legend: { 
+            position: 'top',
+            labels: { color: '#c4b5fd', font: { size: 14, weight: '600' } }
+          }
+        },
+        scales: {
+          x: { 
+            title: { display: true, text: 'วันที่', color: '#a5b4fc' },
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          },
+          y: { 
+            title: { display: true, text: 'ราคา (USD)', color: '#a5b4fc' },
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          }
+        }
+      }
+    });
+
+    // Volume Chart
+    new Chart(document.getElementById("volChart"), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Volume',
+          data: volumes,
+          backgroundColor: 'rgba(96, 165, 250, 0.6)',
+          borderColor: '#60a5fa',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false }},
+        scales: {
+          x: { 
+            title: { display: true, text: 'วันที่', color: '#a5b4fc' },
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          },
+          y: { 
+            title: { display: true, text: 'ปริมาณ (หุ้น)', color: '#a5b4fc' },
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          }
+        }
+      }
+    });
+
+    // RSI Chart
+    new Chart(document.getElementById("rsiChart"), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'RSI (14)',
+          data: rsi,
+          borderColor: '#818cf8',
+          backgroundColor: 'rgba(129, 140, 248, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        plugins: { 
+          legend: { 
+            position: 'top',
+            labels: { color: '#c4b5fd', font: { size: 14, weight: '600' } }
+          }
+        },
+        scales: { 
+          y: { 
+            min: 0, 
+            max: 100, 
+            title: { display: true, text: 'RSI (0–100)', color: '#a5b4fc' },
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          },
+          x: {
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          }
+        }
+      }
+    });
+
+    // MACD Chart
+    new Chart(document.getElementById("macdChart"), {
       type: 'line',
       data: {
         labels,
         datasets: [
-          { label: 'Open',      data: opens,     borderWidth: 2, pointRadius: 0 },
-          { label: 'High',      data: highs,     borderWidth: 2, pointRadius: 0 },
-          { label: 'Low',       data: lows,      borderWidth: 2, pointRadius: 0 },
-          { label: 'Close',     data: closes,    borderWidth: 2, pointRadius: 0 },
-          { label: 'Adj Close', data: adjCloses, borderWidth: 2, pointRadius: 0 }
+          { 
+            label: 'MACD', 
+            data: macd, 
+            borderColor: '#60a5fa', 
+            tension: 0.3, 
+            pointRadius: 0,
+            borderWidth: 2
+          },
+          { 
+            label: 'Signal', 
+            data: signal, 
+            borderColor: '#c084fc', 
+            tension: 0.3, 
+            pointRadius: 0,
+            borderWidth: 2
+          }
         ]
       },
       options: {
-        responsive: true,
-        interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { display: true } },
-        scales: {
-          x: { title: { display: true, text: 'Date' } },
-          y: { title: { display: true, text: 'Price' }, beginAtZero: false }
+        plugins: { 
+          legend: { 
+            position: 'top',
+            labels: { color: '#c4b5fd', font: { size: 14, weight: '600' } }
+          }
+        },
+        scales: { 
+          y: { 
+            title: { display: true, text: 'MACD Value', color: '#a5b4fc' },
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          },
+          x: {
+            ticks: { color: '#a5b4fc' },
+            grid: { color: 'rgba(167, 139, 250, 0.1)' }
+          }
         }
       }
     });
 
-    // ==== Volume ====
-    const volCtx = document.getElementById('volChart').getContext('2d');
-    new Chart(volCtx, {
-      type: 'bar',
-      data: { labels, datasets: [{ label: 'Volume', data: volumes, borderWidth: 0 }] },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: true } },
-        scales: {
-          x: { title: { display: true, text: 'Date' } },
-          y: { title: { display: true, text: 'Volume' }, beginAtZero: true }
-        }
-      }
+    // Change ticker
+    document.getElementById('goBtn').addEventListener('click', () => {
+      const t = document.getElementById('tickerSelect').value;
+      const url = new URL(window.location.href);
+      url.pathname = `/ch/chart/${t}/`;
+      window.location.href = url.toString();
     });
 
-    // ==== ควบคุมการเปลี่ยน ticker ====
-    const sel = document.getElementById('tickerSelect');
-    const inp = document.getElementById('tickerInput');
-    const go  = document.getElementById('goBtn');
-
-    sel.addEventListener('change', () => { inp.value = sel.value; });
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); go.click(); }
-    });
-    go.addEventListener('click', () => {
-      const t = (inp.value || sel.value || '').trim();
-      if (!t) return;
-      window.location.href = `/ch/chart/${encodeURIComponent(t)}/`;
-    });
+    // Change timeframe
+    function changePeriod(period) {
+      const t = document.getElementById('tickerSelect').value;
+      window.location.href = `/ch/chart/${t}/?period=${period}`;
+    }
   </script>
 </body>
 </html>

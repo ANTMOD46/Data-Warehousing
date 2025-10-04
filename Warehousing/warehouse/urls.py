@@ -16,6 +16,9 @@ urlpatterns = [
     # path("ai/econ/<str:code>/", views.ai_econ_analysis),
     path("ai/prompt/", views.ai_prompt_page, name="ai_prompt"),
     path("ai/stock/", views.ai_stock_page, name="ai_stock_page"),
-    path("api/ai/analyze-stock", views.ai_analyze_stock, name="ai_analyze_stock")
+    path("api/ai/analyze-stock", views.ai_analyze_stock, name="ai_analyze_stock"),
+    path('economic-indicators/', views.economic_indicators_view, name='economic_indicators'),
+
+    
 
 ]

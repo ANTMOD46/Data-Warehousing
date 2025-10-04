@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ดัชนีเศรษฐกิจ</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #2d1b4e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(138, 43, 226, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(65, 105, 225, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(72, 61, 139, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+            animation: float 20s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(30px, -30px); }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 50px;
+            animation: fadeInDown 0.8s ease;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 50%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -1px;
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { filter: drop-shadow(0 0 20px rgba(167, 139, 250, 0.4)); }
+            50% { filter: drop-shadow(0 0 30px rgba(96, 165, 250, 0.6)); }
+        }
+
+        .header p {
+            font-size: 1.2em;
+            color: #a5b4fc;
+            font-weight: 300;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(167, 139, 250, 0.2);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.4);
+            border-color: rgba(167, 139, 250, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(167, 139, 250, 0.3);
+        }
+
+        .card-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            margin-right: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            flex: 1;
+        }
+
+        .card-title h2 {
+            font-size: 1.8em;
+            font-weight: 700;
+            margin-bottom: 5px;
+            background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card-title .subtitle {
+            font-size: 0.9em;
+            color: #a5b4fc;
+            font-weight: 400;
+        }
+
+        /* CPI Card - Purple Blue */
+        .cpi-card .card-icon {
+            background: linear-gradient(135deg, #a78bfa 0%, #818cf8 100%);
+        }
+
+        /* GDP Card - Sky Blue */
+        .gdp-card .card-icon {
+            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+        }
+
+        /* Unemployment Card - Deep Purple */
+        .unemp-card .card-icon {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+        }
+
+        .info-box {
+            background: rgba(167, 139, 250, 0.08);
+            backdrop-filter: blur(10px);
+            border-left: 4px solid #a78bfa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            line-height: 1.8;
+            min-height: 420px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-box p {
+            margin-bottom: 10px;
+            color: #e0e7ff;
+            font-size: 0.95em;
+        }
+
+        .info-box strong {
+            color: #c4b5fd;
+            font-weight: 600;
+        }
+
+        .interpretation {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px dashed rgba(167, 139, 250, 0.3);
+        }
+
+        .interpretation-title {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: #a78bfa;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+        }
+
+        .interpretation p {
+            margin-left: 20px;
+            padding: 8px 0;
+            font-size: 0.9em;
+            color: #c4b5fd;
+        }
+
+        .good {
+            color: #86efac;
+            font-weight: 600;
+        }
+
+        .bad {
+            color: #fca5a5;
+            font-weight: 600;
+        }
+
+        .dropdown-toggle {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+            color: white;
+            border: none;
+            padding: 15px 24px;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .dropdown-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
+        }
+
+        .dropdown-toggle:active {
+            transform: translateY(0);
+        }
+
+        .dropdown-arrow {
+            font-size: 1.3em;
+            transition: transform 0.3s ease;
+            font-weight: bold;
+        }
+
+        .dropdown-arrow.active {
+            transform: rotate(180deg);
+        }
+
+        .dropdown-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: 0;
+        }
+
+        .dropdown-content.active {
+            max-height: 2500px;
+            margin-top: 15px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            overflow: hidden;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+        }
+
+        .data-table thead th {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(99, 102, 241, 0.3) 100%);
+            backdrop-filter: blur(10px);
+            color: #c4b5fd;
+            padding: 18px 15px;
+            font-weight: 600;
+            text-align: left;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(167, 139, 250, 0.3);
+        }
+
+        .data-table tbody tr {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(167, 139, 250, 0.1);
+        }
+
+        .data-table tbody tr:hover {
+            background: rgba(167, 139, 250, 0.1);
+            transform: translateX(5px);
+        }
+
+        .data-table td {
+            padding: 16px 15px;
+            color: #e0e7ff;
+        }
+
+        .data-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .value-cell {
+            font-weight: 700;
+            font-size: 1.1em;
+            background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .no-data {
+            background: rgba(239, 68, 68, 0.15) !important;
+            color: #fca5a5;
+            text-align: center;
+            font-weight: 600;
+            padding: 30px !important;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .source-badge {
+            display: inline-block;
+            background: rgba(167, 139, 250, 0.2);
+            color: #c4b5fd;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+            border: 1px solid rgba(167, 139, 250, 0.3);
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #a78bfa 0%, #818cf8 100%);
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .card {
+                padding: 20px;
+            }
+            
+            .data-table {
+                font-size: 0.85em;
+            }
+        }
+
+        .footer {
+            text-align: center;
+            color: #a5b4fc;
+            margin-top: 50px;
+            font-size: 0.9em;
+            font-weight: 300;
+            animation: fadeInUp 1s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 ดัชนีเศรษฐกิจ</h1>
+            <p>ระบบคลังข้อมูลเศรษฐกิจเพื่อการวิเคราะห์ตลาดหุ้น</p>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- CPI Card -->
+            <div class="card cpi-card">
+                <div class="card-header">
+                    <div class="card-icon">💰</div>
+                    <div class="card-title">
+                        <h2>CPI</h2>
+                        <div class="subtitle">ดัชนีราคาผู้บริโภค</div>
+                    </div>
+                </div>
+                
+                <div class="info-box">
+                    <p><strong>คำอธิบาย:</strong> CPI คือตัวชี้วัดการเปลี่ยนแปลงราคาเฉลี่ยของสินค้าและบริการที่ผู้บริโภคจ่ายไป เป็นมาตรวัดหลักของอัตราเงินเฟ้อ (Inflation)</p>
+                    <p><strong>หน่วยวัด:</strong> ดัชนี (Index Value) - มักตั้งฐาน 100 ในปีฐาน</p>
+                    
+                    <div class="interpretation">
+                        <div class="interpretation-title">🎯 การตีความผลกระทบต่อตลาดหุ้น</div>
+                        <p>✅ <strong>CPI เพิ่มขึ้น 2-3% ต่อปี</strong> = เงินเฟ้อในระดับปกติ เศรษฐกิจเติบโตดี → <span class="good">หุ้นมีแนวโน้มขึ้น</span></p>
+                        <p>⚠️ <strong>CPI เพิ่มขึ้นมากกว่า 4-5% ต่อปี</strong> = เงินเฟ้อสูง ธนาคารกลางอาจขึ้นดอกเบี้ย → <span class="bad">หุ้นกดดัน ต้นทุนเพิ่ม</span></p>
+                        <p>⚠️ <strong>CPI ลดลง หรือติดลบ</strong> = เงินฝืด (Deflation) เศรษฐกิจชะลอตัว → <span class="bad">สัญญาณไม่ดี หุ้นอ่อนแอ</span></p>
+                    </div>
+                </div>
+
+                <button class="dropdown-toggle" onclick="toggleDropdown('cpi-data')">
+                    <span>📊 ดูข้อมูล CPI</span>
+                    <span class="dropdown-arrow" id="arrow-cpi-data">▼</span>
+                </button>
+
+                <div class="dropdown-content" id="cpi-data">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>วันที่</th>
+                                <th>ค่า CPI</th>
+                                <th>แหล่งข้อมูล</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in cpi_data %}
+                            <tr>
+                                <td>{{ record.date.date|date:"Y-m-d" }}</td>
+                                <td class="value-cell">{{ record.value|floatformat:2 }}</td>
+                                <td><span class="source-badge">{{ record.source|default:"ไม่ระบุ" }}</span></td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="3" class="no-data">⚠️ ไม่มีข้อมูล CPI ในฐานข้อมูล</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- GDP Card -->
+            <div class="card gdp-card">
+                <div class="card-header">
+                    <div class="card-icon">📈</div>
+                    <div class="card-title">
+                        <h2>REAL GDP</h2>
+                        <div class="subtitle">ผลิตภัณฑ์มวลรวมภายในประเทศ</div>
+                    </div>
+                </div>
+                
+                <div class="info-box">
+                    <p><strong>คำอธิบาย:</strong> GDP คือมูลค่ารวมของสินค้าและบริการทั้งหมดที่ผลิตในประเทศในช่วงเวลาหนึ่ง REAL GDP เป็น GDP ที่ปรับค่าตามเงินเฟ้อแล้ว ใช้วัดอัตราการเติบโตทางเศรษฐกิจ</p>
+                    <p><strong>หน่วยวัด:</strong> พันล้านดอลลาร์สหรัฐฯ (Billion USD) หรือเปอร์เซ็นต์การเติบโต (GDP Growth Rate)</p>
+                    
+                    <div class="interpretation">
+                        <div class="interpretation-title">🎯 การตีความผลกระทบต่อตลาดหุ้น</div>
+                        <p>✅ <strong>GDP เติบโต 2-4% ต่อปี</strong> = เศรษฐกิจแข็งแกร่ง บริษัทกำไรดี → <span class="good">หุ้นมีแนวโน้มขึ้น</span></p>
+                        <p>⚠️ <strong>GDP เติบโตมากกว่า 5-6%</strong> = เศรษฐกิจร้อนแรงเกินไป อาจเกิดเงินเฟ้อตามมา → <span class="bad">ระวังฟองสบู่</span></p>
+                        <p>⚠️ <strong>GDP ติดลบ 2 ไตรมาสติดต่อกัน</strong> = เข้าสู่ภาวะถดถอย (Recession) → <span class="bad">หุ้นร่วงหนัก</span></p>
+                    </div>
+                </div>
+
+                <button class="dropdown-toggle" onclick="toggleDropdown('gdp-data')">
+                    <span>📊 ดูข้อมูล GDP</span>
+                    <span class="dropdown-arrow" id="arrow-gdp-data">▼</span>
+                </button>
+
+                <div class="dropdown-content" id="gdp-data">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>วันที่</th>
+                                <th>ค่า GDP</th>
+                                <th>แหล่งข้อมูล</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in gdp_data %}
+                            <tr>
+                                <td>{{ record.date.date|date:"Y-m-d" }}</td>
+                                <td class="value-cell">{{ record.value|floatformat:2 }}</td>
+                                <td><span class="source-badge">{{ record.source|default:"ไม่ระบุ" }}</span></td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="3" class="no-data">⚠️ ไม่มีข้อมูล REAL GDP ในฐานข้อมูล</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Unemployment Card -->
+            <div class="card unemp-card">
+                <div class="card-header">
+                    <div class="card-icon">👥</div>
+                    <div class="card-title">
+                        <h2>อัตราการว่างงาน</h2>
+                        <div class="subtitle">Unemployment Rate</div>
+                    </div>
+                </div>
+                
+                <div class="info-box">
+                    <p><strong>คำอธิบาย:</strong> อัตราการว่างงานคือสัดส่วนของแรงงานที่ไม่มีงานทำและกำลังมองหางานอยู่ เป็นตัวชี้วัดความแข็งแกร่งของตลาดแรงงานและสุขภาพเศรษฐกิจโดยรวม</p>
+                    <p><strong>หน่วยวัด:</strong> ร้อยละ (Percentage) - คิดจากจำนวนคนว่างงาน ÷ กำลังแรงงานทั้งหมด × 100</p>
+                    
+                    <div class="interpretation">
+                        <div class="interpretation-title">🎯 การตีความผลกระทบต่อตลาดหุ้น</div>
+                        <p>✅ <strong>อัตราว่างงาน 3-5%</strong> = ระดับปกติ เศรษฐกิจดี คนหางานง่าย กำลังซื้อสูง → <span class="good">หุ้นแข็งแกร่ง</span></p>
+                        <p>⚠️ <strong>อัตราว่างงานมากกว่า 6-7%</strong> = เศรษฐกิจชะลอตัว กำลังซื้อลดลง → <span class="bad">หุ้นถูกกดดัน</span></p>
+                        <p>⚠️ <strong>อัตราว่างงานต่ำกว่า 3%</strong> = ตลาดแรงงานตึงเกินไป ค่าแรงพุ่ง อาจเกิดเงินเฟ้อ → <span class="bad">ต้นทุนธุรกิจเพิ่ม</span></p>
+                    </div>
+                </div>
+
+                <button class="dropdown-toggle" onclick="toggleDropdown('unemp-data')">
+                    <span>📊 ดูข้อมูลอัตราการว่างงาน</span>
+                    <span class="dropdown-arrow" id="arrow-unemp-data">▼</span>
+                </button>
+
+                <div class="dropdown-content" id="unemp-data">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>วันที่</th>
+                                <th>อัตรา (%)</th>
+                                <th>แหล่งข้อมูล</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in unemp_data %}
+                            <tr>
+                                <td>{{ record.date.date|date:"Y-m-d" }}</td>
+                                <td class="value-cell">{{ record.value|floatformat:2 }}%</td>
+                                <td><span class="source-badge">{{ record.source|default:"ไม่ระบุ" }}</span></td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="3" class="no-data">⚠️ ไม่มีข้อมูลอัตราการว่างงานในฐานข้อมูล</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>💼 ระบบคลังข้อมูลเศรษฐกิจเพื่อการวิเคราะห์ตลาดหุ้น | อัพเดตล่าสุด: {{ current_date|default:"2025-10-02" }}</p>
+        </div>
+    </div>
+
+    <script>
+        function toggleDropdown(id) {
+            const content = document.getElementById(id);
+            const arrow = document.getElementById('arrow-' + id);
+            
+            content.classList.toggle('active');
+            arrow.classList.toggle('active');
+        }
+    </script>
+</body>
+</html>

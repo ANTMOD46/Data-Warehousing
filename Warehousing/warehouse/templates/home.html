@@ -3,122 +3,653 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>หน้าแรก | Data Warehousing</title>
+  <title>TradePro | Data Warehousing Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #0b1320; color: #e6edf3; }
-    header { padding: 24px; background: #111a2b; border-bottom: 1px solid #1f2a44; }
-    header h1 { margin: 0; font-size: 22px; }
-    main { padding: 24px; max-width: 1000px; margin: 0 auto; }
-    section { background: #0f1a2e; border: 1px solid #1f2a44; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-    h2 { margin: 0 0 8px; font-size: 18px; }
-    p { margin: 6px 0 12px; color: #c9d1d9; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    input[type="text"] { padding: 10px 12px; border-radius: 8px; border: 1px solid #2b3553; background: #0b1320; color: #e6edf3; }
-    button, a.btn { padding: 10px 14px; border-radius: 8px; border: 1px solid #2b3553; background: #1b2b4b; color: #e6edf3; cursor: pointer; text-decoration: none; display: inline-block; }
-    button:hover, a.btn:hover { background: #27406f; }
-    .hint { font-size: 12px; color: #9fb1c7; }
-    pre { white-space: pre-wrap; background: #0b1320; border: 1px solid #1f2a44; padding: 12px; border-radius: 8px; overflow-x: auto; color: #d1e3ff; }
-    ul { margin: 8px 0 0 18px; }
-    .small { font-size: 13px; color: #a8b3c6; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #4f46e5;
+      --primary-dark: #3730a3;
+      --secondary: #0ea5e9;
+      --accent: #f59e0b;
+      --success: #10b981;
+      --danger: #ef4444;
+      --dark-bg: #0f0f23;
+      --card-bg: #1a1a2e;
+      --border: #2d2d44;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --gradient-2: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--dark-bg);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    .bg-pattern {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 20% 20%, rgba(79, 70, 229, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(14, 165, 233, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 60% 40%, rgba(245, 158, 11, 0.05) 0%, transparent 50%);
+      z-index: -1;
+    }
+
+    header {
+      background: rgba(26, 26, 46, 0.95);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      padding: 20px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 18px;
+    }
+
+    .logo h1 {
+      font-size: 24px;
+      font-weight: 700;
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    main {
+      padding: 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .hero-section {
+      text-align: center;
+      padding: 40px 0;
+      margin-bottom: 40px;
+    }
+
+    .hero-title {
+      font-size: 48px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 50%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subtitle {
+      font-size: 20px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .steps-container {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .step-card {
+      background: rgba(26, 26, 46, 0.8);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .step-card:hover {
+      transform: translateY(-8px);
+      border-color: var(--primary);
+      box-shadow: 0 20px 40px rgba(79, 70, 229, 0.2);
+    }
+
+    .step-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--gradient);
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background: var(--gradient);
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+
+    .step-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .step-description {
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.7;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: stretch;
+      margin-bottom: 16px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 15, 35, 0.8);
+      color: var(--text-primary);
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    input[type="text"]::placeholder {
+      color: var(--text-muted);
+    }
+
+    .btn {
+      padding: 14px 24px;
+      border-radius: 12px;
+      border: none;
+      background: var(--gradient);
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(79, 70, 229, 0.3);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: rgba(148, 163, 184, 0.1);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(148, 163, 184, 0.2);
+      color: var(--text-primary);
+      box-shadow: 0 10px 25px rgba(148, 163, 184, 0.1);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+    }
+
+    .btn-success:hover {
+      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+    }
+
+    .result-container {
+      margin-top: 20px;
+      display: none;
+      background: rgba(15, 15, 35, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+    }
+
+    .result-container::before {
+      content: '📊';
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      font-size: 20px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      color: var(--text-secondary);
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-x: auto;
+    }
+
+    .hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    .quick-actions {
+      background: rgba(26, 26, 46, 0.6);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      margin-top: 40px;
+    }
+
+    .quick-actions h2 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      text-align: center;
+      color: var(--text-primary);
+    }
+
+    .quick-buttons {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-loading {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--accent);
+    }
+
+    .status-success {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+
+    .status-error {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+
+    .instructions {
+      background: rgba(79, 70, 229, 0.1);
+      border: 1px solid rgba(79, 70, 229, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .instructions ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .instructions li {
+      padding: 8px 0;
+      padding-left: 28px;
+      position: relative;
+      color: var(--text-secondary);
+    }
+
+    .instructions li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: var(--success);
+      font-weight: bold;
+    }
+
+    @media (max-width: 768px) {
+      .steps-container {
+        grid-template-columns: 1fr;
+      }
+      
+      .hero-title {
+        font-size: 36px;
+      }
+      
+      .input-group {
+        flex-direction: column;
+      }
+      
+      input[type="text"] {
+        min-width: auto;
+      }
+      
+      .quick-buttons {
+        flex-direction: column;
+      }
+      
+      main {
+        padding: 20px;
+      }
+    }
   </style>
 </head>
 <body>
+  <div class="bg-pattern"></div>
+  
   <header>
-    <h1>Data Warehousing — หน้าแรก</h1>
-    <div class="small">สรุปวิธีใช้งานระบบอย่างรวดเร็ว พร้อมปุ่มลัดไปยังหน้าสำคัญ</div>
+    <div class="header-content">
+      <div class="logo">
+        <div class="logo-icon">T</div>
+        <div>
+          <h1>TradePro</h1>
+          <div class="header-subtitle">Advanced Stock Data Analytics</div>
+        </div>
+      </div>
+    </div>
   </header>
+
   <main>
-    <section>
-      <h2>วิธีการใช้งานคร่าว ๆ</h2>
+    <div class="hero-section">
+      <h1 class="hero-title">Stock Market Intelligence</h1>
+      <p class="hero-subtitle">เครื่องมือวิเคราะห์หุ้นและข้อมูลเศรษฐกิจที่ทรงพลัง พร้อม AI ช่วยวิเคราะห์</p>
+    </div>
+
+    <div class="instructions">
+      <h3 style="margin-bottom: 16px; color: var(--primary);">🚀 วิธีการใช้งาน</h3>
       <ul>
-        <li>1) เรียกข้อมูลหุ้นที่ต้องการจะดู</li>
-        <li>2) โหลดข้อมูลตัวชี้วัดเศรษฐกิจ (economic indicators)</li>
-        <li>3) เลือกข้อมูล/หน้าที่ต้องการจะดู (กราฟ)</li>
-        <li>4) สอบถามข้อมูล/ขอวิเคราะห์กับ AI</li>
+        <li>ใส่ข้อมูลหุ้นที่ต้องการวิเคราะห์และรอดาวน์โหลด</li>
+        <li>ดูข้อมูลตัวชี้วัดเศรษฐกิจสำคัญ</li>
+        <li>เลือกดูกราฟและข้อมูลที่สนใจ</li>
+        <li>ใช้ AI วิเคราะห์และให้คำแนะนำ</li>
       </ul>
-    </section>
+    </div>
 
-    <section>
-      <h2>1) โหลดราคาหุ้นที่ต้องการ</h2>
-      <p class="hint">พิมพ์สัญลักษณ์หุ้น (เช่น AAPL, MSFT) แล้วกดโหลด ระบบจะดึงจาก Alpha Vantage และบันทึกลงคลังข้อมูล</p>
-      <div class="row">
-        <input id="ticker" type="text" placeholder="เช่น AAPL" />
-        <button onclick="loadStock()">โหลดราคาหุ้น</button>
-        <button onclick="loadStock('AAPL')">ตัวอย่าง: AAPL</button>
+    <div class="steps-container">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h2 class="step-title">โหลดข้อมูลหุ้น</h2>
+        <p class="step-description">ดึงข้อมูลราคาหุ้นจาก Alpha Vantage API และบันทึกลงระบบฐานข้อมูล</p>
+        
+        <div class="input-group">
+          <input id="ticker" type="text" placeholder="ป้อนสัญลักษณ์หุ้น (เช่น AAPL, MSFT)" />
+          <button class="btn" onclick="loadStock()">
+            <span id="loadBtn">📈 โหลดข้อมูล</span>
+          </button>
+        </div>
+        
+        <div class="input-group">
+          <button class="btn btn-secondary" onclick="loadStock('AAPL')">💡 ทดลอง AAPL</button>
+          <button class="btn btn-secondary" onclick="loadStock('GOOGL')">💡 ทดลอง GOOGL</button>
+        </div>
+        
+        <div id="stockResult" class="result-container"></div>
       </div>
-      <pre id="stockResult" style="margin-top:10px; display:none"></pre>
-    </section>
 
-    <section>
-      <h2>2) โหลดข้อมูลเศรษฐกิจ</h2>
-      <p class="hint">กดปุ่มเพื่อดึงตัวชี้วัดยอดนิยม (CPI, REAL_GDP, UNEMPLOYMENT) แล้วบันทึกลงคลังข้อมูล</p>
-      <div class="row">
-        <button onclick="loadEcon()">โหลด Economic Indicators</button>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h2 class="step-title">ข้อมูลเศรษฐกิจ</h2>
+        <p class="step-description">ตัวชี้วัดเศรษฐกิจสำคัญ  CPI, GDP, อัตราการว่างงาน</p>
+        
+        <div class="input-group">
+          <button class="btn btn-success" onclick="loadAndViewEcon()">
+            📊 ดูข้อมูลเศรษฐกิจ
+          </button>
+        </div>
+        
+        <div class="hint">💡 จะเปิดหน้าใหม่แสดงข้อมูลเศรษฐกิจทันทีหลังโหลดเสร็จ</div>
       </div>
-      <pre id="econResult" style="margin-top:10px; display:none"></pre>
-    </section>
 
-    <section>
-      <h2>3) เลือกดูข้อมูล</h2>
-      <p class="hint">พิมพ์สัญลักษณ์หุ้นและไปยังหน้ากราฟ</p>
-      <div class="row">
-        <input id="viewTicker" type="text" placeholder="เช่น AAPL" />
-        <a class="btn" href="#" onclick="goChart()">ดูกราฟ</a>
-        <span class="hint">หรือใส่ path ตรง: /ch/chart/<i>TICKER</i></span>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h2 class="step-title">ดูกราฟและข้อมูล</h2>
+        <p class="step-description">ใส่ชื่อหุ้นที่ต้องการดูและไปยังหน้ากราฟเพื่อวิเคราะห์</p>
+        
+        <div class="input-group">
+          <input id="viewTicker" type="text" placeholder="สัญลักษณ์หุ้นที่จะดูกราฟ" />
+          <button class="btn" onclick="goChart()">📈 ดูกราฟ</button>
+        </div>
+        
+        <div class="hint">💡 หรือไปที่ URL: /ch/chart/[TICKER] โดยตรง</div>
       </div>
-    </section>
 
-    <section>
-      <h2>4) คุยกับ AI</h2>
-      <p class="hint">ไปที่หน้า AI เพื่อเลือกหุ้นและพิมพ์คำถาม หรือเปิดหน้า Prompt อย่างเดียว</p>
-      <div class="row">
-        <a class="btn" href="/ai/stock/">ไปหน้า AI วิเคราะห์หุ้น</a>
+      <div class="step-card">
+        <div class="step-number">4</div>
+        <h2 class="step-title">วิเคราะห์ด้วย AI</h2>
+        <p class="step-description">ใช้ AI ช่วยวิเคราะห์หุ้นและให้คำแนะนำการลงทุน</p>
+        
+        <div class="input-group">
+          <a class="btn" href="/ai/stock/">🤖 เริ่มใช้ AI Analytics</a>
+        </div>
       </div>
-    </section>
+    </div>
 
-    <section>
-      <h2>ลิงก์ทางลัดอื่น ๆ</h2>
-      <div class="row">
-        <a class="btn" href="/get-economic-indicators/" target="_blank">ดูข้อมูลเศรษฐกิจ (JSON)</a>
+    {% comment %} <div class="quick-actions">
+      <h2>🔗 เครื่องมือเพิ่มเติม</h2>
+      <div class="quick-buttons">
+        <a class="btn btn-secondary" href="/get-economic-indicators/" target="_blank">
+          📋 ดูข้อมูลเศรษฐกิจ (JSON)
+        </a>
       </div>
-    </section>
+    </div> {% endcomment %}
   </main>
 
   <script>
+
+        function loadAndViewEcon() {
+        // ใช้ชื่อ URL name ที่คุณตั้งไว้ใน urls.py: name='economic_indicators'
+        // และ Django จะแปลงเป็น /economic-indicators/ ให้อัตโนมัติ (ถ้าคุณใช้ Django template tag)
+        // แต่เนื่องจากใช้ JS ตรงๆ เราจะใช้ URL ที่แน่นอน
+        
+        const targetUrl = "{% url 'economic_indicators' %}";
+        
+        // 1. ตรวจสอบว่าเราอยู่ใน Django Template หรือไม่
+        if (targetUrl.includes('{%')) {
+            // ถ้าอยู่ในไฟล์ .html ที่ไม่ได้ผ่าน Django render หรือใช้ JS แยก
+            // ให้ใช้ URL ที่คุณตั้งค่าไว้ใน path() โดยตรง
+            window.location.href = '/economic-indicators/'; 
+        } else {
+            // ถ้าอยู่ใน Django Template (ดีที่สุด)
+            window.location.href = targetUrl;
+        }
+
+        // หมายเหตุ: ถ้าโค้ดนี้อยู่ในไฟล์ .js ที่แยกออกมา ให้ใช้แค่:
+        // window.location.href = '/economic-indicators/';
+      }
     async function loadStock(symbol) {
-      const t = (symbol || document.getElementById('ticker').value || '').trim();
-      if (!t) { alert('กรุณาใส่สัญลักษณ์หุ้น'); return; }
-      const resEl = document.getElementById('stockResult');
-      resEl.style.display = 'block';
-      resEl.textContent = 'กำลังโหลด...';
+      const ticker = symbol || document.getElementById('ticker').value.trim().toUpperCase();
+      if (!ticker) { 
+        alert('❌ กรุณาใส่สัญลักษณ์หุ้น'); 
+        return; 
+      }
+
+      const resultEl = document.getElementById('stockResult');
+      const btnEl = document.getElementById('loadBtn');
+      
+      // Show loading state
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `
+        <div class="status-indicator status-loading">
+          <div class="loading-spinner"></div>
+          กำลังโหลดข้อมูล ${ticker}...
+        </div>
+      `;
+      btnEl.innerHTML = '<div class="loading-spinner"></div> กำลังโหลด...';
+      
       try {
-        const r = await fetch(`/load-stock-data/${encodeURIComponent(t)}/`);
-        const j = await r.json();
-        resEl.textContent = JSON.stringify(j, null, 2);
-      } catch (e) {
-        resEl.textContent = 'เกิดข้อผิดพลาด: ' + e;
+        const response = await fetch(`/load-stock-data/${encodeURIComponent(ticker)}/`);
+        const data = await response.json();
+        
+        // Show success state
+        resultEl.innerHTML = `
+          <div class="status-indicator status-success">
+            ✅ โหลดข้อมูล ${ticker} สำเร็จ
+          </div>
+          <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+        btnEl.innerHTML = '📈 โหลดข้อมูล';
+        
+        // Clear input if successful
+        if (!symbol) {
+          document.getElementById('ticker').value = '';
+        }
+      } catch (error) {
+        resultEl.innerHTML = `
+          <div class="status-indicator status-error">
+            ❌ เกิดข้อผิดพลาด: ${error.message}
+          </div>
+        `;
+        btnEl.innerHTML = '📈 โหลดข้อมูล';
       }
     }
 
     async function loadEcon() {
-      const resEl = document.getElementById('econResult');
-      resEl.style.display = 'block';
-      resEl.textContent = 'กำลังโหลด...';
+      const resultEl = document.getElementById('econResult');
+      const btnEl = document.getElementById('econBtn');
+      
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `
+        <div class="status-indicator status-loading">
+          <div class="loading-spinner"></div>
+          กำลังโหลดข้อมูลเศรษฐกิจ...
+        </div>
+      `;
+      btnEl.innerHTML = '<div class="loading-spinner"></div> กำลังโหลด...';
+      
       try {
-        const r = await fetch('/load-economic-indicators/');
-        const j = await r.json();
-        resEl.textContent = JSON.stringify(j, null, 2);
-      } catch (e) {
-        resEl.textContent = 'เกิดข้อผิดพลาด: ' + e;
+        const response = await fetch('/load-economic-indicators/');
+        const data = await response.json();
+        
+        resultEl.innerHTML = `
+          <div class="status-indicator status-success">
+            ✅ โหลดข้อมูลเศรษฐกิจสำเร็จ
+          </div>
+          <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+        btnEl.innerHTML = '📊 โหลด Economic Data';
+      } catch (error) {
+        resultEl.innerHTML = `
+          <div class="status-indicator status-error">
+            ❌ เกิดข้อผิดพลาด: ${error.message}
+          </div>
+        `;
+        btnEl.innerHTML = '📊 โหลด Economic Data';
       }
     }
 
     function goChart() {
-      const t = (document.getElementById('viewTicker').value || '').trim();
-      if (!t) { alert('กรุณาใส่สัญลักษณ์หุ้น'); return; }
-      window.location.href = `/ch/chart/${encodeURIComponent(t)}/`;
+      const ticker = document.getElementById('viewTicker').value.trim().toUpperCase();
+      if (!ticker) { 
+        alert('❌ กรุณาใส่สัญลักษณ์หุ้น'); 
+        return; 
+      }
+      window.location.href = `/ch/chart/${encodeURIComponent(ticker)}/`;
     }
-    // ปุ่ม Trading Dashboard ถูกนำออกตามคำขอ
+
+    // Enhanced UX: Enter key support
+    document.getElementById('ticker').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') loadStock();
+    });
+
+    document.getElementById('viewTicker').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') goChart();
+    });
+
+    // Auto-uppercase ticker inputs
+    document.getElementById('ticker').addEventListener('input', function(e) {
+      e.target.value = e.target.value.toUpperCase();
+    });
+
+    document.getElementById('viewTicker').addEventListener('input', function(e) {
+      e.target.value = e.target.value.toUpperCase();
+    });
   </script>
 </body>
 </html>

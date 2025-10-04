@@ -4,3 +4,5 @@ requests
 clickhouse-driver
 matplotlib
 google-generativeai
+pandas
+numpy

@@ -15,9 +15,10 @@ import io
 import matplotlib
 import matplotlib.pyplot as plt
 import subprocess, sys
+import time
 
-API_KEY = os.getenv('LGI5OGYSS30VMFIT')  # API Key ของคุณจาก Alpha Vantage
-ALPHAVANTAGE_API_KEY = "<LGI5OGYSS30VMFIT>"
+API_KEY = os.getenv('T39H2CDWWA09NDT6')  # API Key ของคุณจาก Alpha Vantage
+ALPHAVANTAGE_API_KEY = "<T39H2CDWWA09NDT6>"
 
 
 
@@ -424,91 +425,326 @@ def load_economic_indicators(request):
             except subprocess.CalledProcessError as e:
                 result["by_indicator"][code]["ch_sync"] = "failed"
                 result["by_indicator"][code]["ch_sync_err"] = (e.stderr or e.stdout or "").strip()[:400]
+                
+                if code != uniq_codes[-1]:
+                    time.sleep(15) 
+
 
     return JsonResponse(result, status=200)
 
 
+# from django.shortcuts import render
+# from .models import EconDailyFact
 
+# def economic_indicators_view(request):
+#     # ดึงข้อมูลเศรษฐกิจจากฐานข้อมูล (ตัวอย่างข้อมูล CPI)
+#     data = EconDailyFact.objects.all()  # หรือทำ query ที่ต้องการ
 
-# ---------- ClickHouse
+#     # ส่งข้อมูลไปยัง template
+#     return render(request, 'economic_indicators.html', {'data': data})
+from .models import EconDailyFact, EconomicIndicator
+def economic_indicators_view(request):
+    
+    # 1. ดึงข้อมูล CPI
+    cpi_indicator = EconomicIndicator.objects.get(code='CPI') # ดึง Indicator object ของ CPI
+    cpi_data = EconDailyFact.objects.filter(indicator=cpi_indicator).order_by('-date')
+
+    # 2. ดึงข้อมูล GDP
+    gdp_indicator = EconomicIndicator.objects.get(code='REAL_GDP')
+    gdp_data = EconDailyFact.objects.filter(indicator=gdp_indicator).order_by('-date')
+    
+    # 3. ดึงข้อมูล UNEMPLOYMENT
+    unemp_indicator = EconomicIndicator.objects.get(code='UNEMPLOYMENT')
+    unemp_data = EconDailyFact.objects.filter(indicator=unemp_indicator).order_by('-date')
+
+    context = {
+        'cpi_data': cpi_data,
+        'gdp_data': gdp_data,
+        'unemp_data': unemp_data,
+    }
+    
+    return render(request, 'economic_indicators.html', context)
+
+# ---------- ClickHouse กล้า 
 #clickhouse
 
-from django.http import JsonResponse
-from django.db import connections
+# from django.http import JsonResponse
+# from django.db import connections
 
+
+# def stock_chart_page(request, ticker: str):
+#     # 1) ดึงรายชื่อหุ้นสำหรับ dropdown แบบไม่ซ้ำ
+#     with connections["clickhouse"].cursor() as cur:
+#         cur.execute("""
+#             SELECT DISTINCT s.ticker
+#             FROM market.dim_symbol AS s
+#             /* ถ้าต้องการเฉพาะตัวที่มีราคาจริง ให้ใช้ INNER JOIN fact แทน และยังคง DISTINCT */
+#             -- INNER JOIN market.fact_price_daily f ON f.symbol_id = s.id
+#             WHERE s.is_active = 1
+#             ORDER BY s.ticker
+#         """)
+#         symbol_rows = cur.fetchall()
+#     symbols = [r[0] for r in symbol_rows]
+
+#     # หาก ticker ที่ขอมายังไม่มีในรายการ ให้โยน 404 (กันสะกดผิด)
+#     if ticker not in symbols:
+#         # ถ้าต้องการรองรับก็ข้ามเงื่อนไขนี้ได้
+#         pass
+
+#     # 2) ดึงข้อมูล “วันละ 1 แถว” และเอาเฉพาะ 30 วันล่าสุด
+#     sql = """
+#       SELECT
+#         d.date,
+#         argMax(f.open,      f.load_ts)  AS open,
+#         argMax(f.high,      f.load_ts)  AS high,
+#         argMax(f.low,       f.load_ts)  AS low,
+#         argMax(f.close,     f.load_ts)  AS close,
+#         argMax(f.adj_close, f.load_ts)  AS adj_close,
+#         argMax(f.volume,    f.load_ts)  AS volume
+#       FROM market.fact_price_daily f
+#       JOIN market.dim_date  d ON d.id = f.date_id
+#       JOIN market.dim_symbol s ON s.id = f.symbol_id
+#       WHERE s.ticker = %(ticker)s
+#       GROUP BY d.date
+#       ORDER BY d.date DESC
+#       LIMIT 30
+#     """
+#     with connections["clickhouse"].cursor() as cur:
+#         cur.execute(sql, {"ticker": ticker})
+#         rows = cur.fetchall()
+
+#     if not rows:
+#         raise Http404(f"No data for ticker={ticker}")
+
+#     # เรียงจากเก่า→ใหม่เพื่อให้กราฟอ่านง่าย
+#     rows.reverse()
+
+#     labels   = [r[0].isoformat() for r in rows]
+#     opens    = [float(r[1]) if r[1] is not None else None for r in rows]
+#     highs    = [float(r[2]) if r[2] is not None else None for r in rows]
+#     lows     = [float(r[3]) if r[3] is not None else None for r in rows]
+#     closes   = [float(r[4]) if r[4] is not None else None for r in rows]
+#     adjclose = [float(r[5]) if r[5] is not None else None for r in rows]
+#     volumes  = [int(r[6])   if r[6] is not None else None for r in rows]
+
+#     context = {
+#         "ticker": ticker,
+#         "symbols": symbols,  # ส่งไปใช้กับ dropdown
+#         "labels_json":   json.dumps(labels),
+#         "opens_json":    json.dumps(opens),
+#         "highs_json":    json.dumps(highs),
+#         "lows_json":     json.dumps(lows),
+#         "closes_json":   json.dumps(closes),
+#         "adjclose_json": json.dumps(adjclose),
+#         "volumes_json":  json.dumps(volumes),
+#     }
+#     return render(request, "stock_chart.html", context)
+
+
+
+# มดปิด
+# from django.shortcuts import render
+# from django.db import connections
+# from django.http import Http404
+# import json
+
+# def stock_chart_page(request, ticker: str):
+#     # 1) ดึงรายชื่อหุ้นสำหรับ dropdown แบบไม่ซ้ำ
+#     with connections["clickhouse"].cursor() as cur:
+#         cur.execute("""
+#             SELECT DISTINCT s.ticker
+#             FROM market.dim_symbol AS s
+#             WHERE s.is_active = 1
+#               AND s.id IN (SELECT DISTINCT symbol_id FROM market.fact_price_daily)
+#             ORDER BY s.ticker
+#         """)
+#         symbols = [row[0] for row in cur.fetchall()]
+
+#     # ถ้า ticker ไม่อยู่ในลิสต์ให้ 404
+#     if ticker not in symbols:
+#         raise Http404(f"Ticker not found: {ticker}")
+
+#     # 2) เอา 30 วันล่าสุด (วันละ 1 แถว) ใช้ argMax เลือกค่าล่าสุดตาม load_ts
+#     sql = """
+#         SELECT
+#             d.date AS dt,
+#             argMax(f.`open`,     f.load_ts) AS open,
+#             argMax(f.high,       f.load_ts) AS high,
+#             argMax(f.low,        f.load_ts) AS low,
+#             argMax(f.`close`,    f.load_ts) AS close,
+#             argMax(f.adj_close,  f.load_ts) AS adj_close,
+#             argMax(f.volume,     f.load_ts) AS volume
+#         FROM market.fact_price_daily AS f
+#         INNER JOIN market.dim_date AS d ON d.id = f.date_id
+#         WHERE f.symbol_id IN (
+#             SELECT id FROM market.dim_symbol
+#             WHERE ticker = %(ticker)s AND is_active = 1
+#         )
+#         GROUP BY dt
+#         ORDER BY dt DESC
+#         LIMIT 30
+#     """
+#     with connections["clickhouse"].cursor() as cur:
+#         cur.execute(sql, {"ticker": ticker})
+#         rows = cur.fetchall()
+
+#     if not rows:
+#         raise Http404(f"No data for ticker={ticker}")
+
+#     # เรียงเก่า->ใหม่ให้กราฟอ่านง่าย
+#     rows.reverse()
+
+#     labels   = [r[0].isoformat() for r in rows]
+#     opens    = [float(r[1]) if r[1] is not None else None for r in rows]
+#     highs    = [float(r[2]) if r[2] is not None else None for r in rows]
+#     lows     = [float(r[3]) if r[3] is not None else None for r in rows]
+#     closes   = [float(r[4]) if r[4] is not None else None for r in rows]
+#     adjclose = [float(r[5]) if r[5] is not None else None for r in rows]
+#     volumes  = [int(r[6])   if r[6] is not None else None for r in rows]
+
+#     context = {
+#         "ticker": ticker,
+#         "symbols": symbols,
+#         "labels_json":   json.dumps(labels),
+#         "opens_json":    json.dumps(opens),
+#         "highs_json":    json.dumps(highs),
+#         "lows_json":     json.dumps(lows),
+#         "closes_json":   json.dumps(closes),
+#         "adjclose_json": json.dumps(adjclose),
+#         "volumes_json":  json.dumps(volumes),
+#     }
+#     return render(request, "stock_chart.html", context)
+
+
+
+
+
+from django.shortcuts import render
+from django.db import connections
+from django.http import Http404, JsonResponse
+import json
+import pandas as pd
+from datetime import timedelta
 
 def stock_chart_page(request, ticker: str):
-    # 1) ดึงรายชื่อหุ้นสำหรับ dropdown แบบไม่ซ้ำ
+    """
+    แสดงกราฟหุ้นจากข้อมูลจริง (ClickHouse)
+    พร้อม RSI, MACD, Timeframe filter (1M, 3M, 1Y, 5Y)
+    """
+    timeframe = request.GET.get("period", "1M")  # default = 1 เดือน
+
+    # 🕒 Map ระยะเวลาเป็นจำนวนวัน
+    period_map = {
+        "1D": 1,
+        "1W": 7,
+        "1M": 30,
+        "3M": 90,
+        "1Y": 365,
+        "5Y": 365 * 5,
+    }
+    days = period_map.get(timeframe, 30)
+
+    # 1) ดึงรายชื่อหุ้นทั้งหมด (จริง)
     with connections["clickhouse"].cursor() as cur:
         cur.execute("""
             SELECT DISTINCT s.ticker
             FROM market.dim_symbol AS s
-            /* ถ้าต้องการเฉพาะตัวที่มีราคาจริง ให้ใช้ INNER JOIN fact แทน และยังคง DISTINCT */
-            -- INNER JOIN market.fact_price_daily f ON f.symbol_id = s.id
             WHERE s.is_active = 1
+              AND s.id IN (SELECT DISTINCT symbol_id FROM market.fact_price_daily)
             ORDER BY s.ticker
         """)
-        symbol_rows = cur.fetchall()
-    symbols = [r[0] for r in symbol_rows]
+        symbols = [r[0] for r in cur.fetchall()]
 
-    # หาก ticker ที่ขอมายังไม่มีในรายการ ให้โยน 404 (กันสะกดผิด)
     if ticker not in symbols:
-        # ถ้าต้องการรองรับก็ข้ามเงื่อนไขนี้ได้
-        pass
+        raise Http404(f"Ticker not found: {ticker}")
 
-    # 2) ดึงข้อมูล “วันละ 1 แถว” และเอาเฉพาะ 30 วันล่าสุด
-    sql = """
-      SELECT
-        d.date,
-        argMax(f.open,      f.load_ts)  AS open,
-        argMax(f.high,      f.load_ts)  AS high,
-        argMax(f.low,       f.load_ts)  AS low,
-        argMax(f.close,     f.load_ts)  AS close,
-        argMax(f.adj_close, f.load_ts)  AS adj_close,
-        argMax(f.volume,    f.load_ts)  AS volume
-      FROM market.fact_price_daily f
-      JOIN market.dim_date  d ON d.id = f.date_id
-      JOIN market.dim_symbol s ON s.id = f.symbol_id
-      WHERE s.ticker = %(ticker)s
-      GROUP BY d.date
-      ORDER BY d.date DESC
-      LIMIT 30
+    # 2) ดึงข้อมูลย้อนหลังตาม period
+    sql = f"""
+        SELECT
+            d.date AS dt,
+            argMax(f.open,  f.load_ts) AS open,
+            argMax(f.high,  f.load_ts) AS high,
+            argMax(f.low,   f.load_ts) AS low,
+            argMax(f.close, f.load_ts) AS close,
+            argMax(f.volume,f.load_ts) AS volume
+        FROM market.fact_price_daily AS f
+        INNER JOIN market.dim_date AS d ON d.id = f.date_id
+        WHERE f.symbol_id IN (
+            SELECT id FROM market.dim_symbol WHERE ticker = %(ticker)s AND is_active = 1
+        )
+        GROUP BY dt
+        ORDER BY dt DESC
+        LIMIT {days + 20}
     """
+
     with connections["clickhouse"].cursor() as cur:
         cur.execute(sql, {"ticker": ticker})
         rows = cur.fetchall()
 
     if not rows:
-        raise Http404(f"No data for ticker={ticker}")
+        raise Http404(f"No data found for {ticker}")
 
-    # เรียงจากเก่า→ใหม่เพื่อให้กราฟอ่านง่าย
-    rows.reverse()
+    df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"]).sort_values("date")
 
-    labels   = [r[0].isoformat() for r in rows]
-    opens    = [float(r[1]) if r[1] is not None else None for r in rows]
-    highs    = [float(r[2]) if r[2] is not None else None for r in rows]
-    lows     = [float(r[3]) if r[3] is not None else None for r in rows]
-    closes   = [float(r[4]) if r[4] is not None else None for r in rows]
-    adjclose = [float(r[5]) if r[5] is not None else None for r in rows]
-    volumes  = [int(r[6])   if r[6] is not None else None for r in rows]
+    # ✅ 1) แปลง date ให้เป็น datetime จริง
+    df["date"] = pd.to_datetime(df["date"])
 
+    # ✅ 2) แปลง numeric columns ให้เป็น float/int
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+
+    # === RSI (14) ===
+    delta = df["close"].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    df["rsi"] = 100 - (100 / (1 + rs))
+
+    # === MACD (12,26,9) ===
+    ema12 = df["close"].ewm(span=12, adjust=False).mean()
+    ema26 = df["close"].ewm(span=26, adjust=False).mean()
+    df["macd"] = ema12 - ema26
+    df["signal"] = df["macd"].ewm(span=9, adjust=False).mean()
+
+    # === คำนวณข้อมูลสถิติจริง ===
+    closes = df["close"].tolist()
+    highs = df["high"].tolist()
+    lows = df["low"].tolist()
+    volumes = df["volume"].tolist()
+
+    if len(closes) >= 2:
+        diff = closes[-1] - closes[-2]
+        pct = (diff / closes[-2]) * 100 if closes[-2] else 0
+        change_text = f"{diff:+.2f} ({pct:+.2f}%)"
+    else:
+        change_text = "-"
+
+    high_52w = max(highs) if highs else None
+    low_52w = min(lows) if lows else None
+    avg_volume = (sum(volumes) / len(volumes) / 1_000_000) if volumes else None
+
+    # ส่งค่าไป Template
     context = {
         "ticker": ticker,
-        "symbols": symbols,  # ส่งไปใช้กับ dropdown
-        "labels_json":   json.dumps(labels),
-        "opens_json":    json.dumps(opens),
-        "highs_json":    json.dumps(highs),
-        "lows_json":     json.dumps(lows),
-        "closes_json":   json.dumps(closes),
-        "adjclose_json": json.dumps(adjclose),
-        "volumes_json":  json.dumps(volumes),
+        "symbols": symbols,
+        "timeframe": timeframe,
+        "labels_json": json.dumps(df["date"].dt.strftime("%Y-%m-%d").tolist()),
+        "closes_json": json.dumps(df["close"].round(2).tolist()),
+        "volumes_json": json.dumps(df["volume"].astype(int).tolist()),
+        "rsi_json": json.dumps(df["rsi"].round(2).fillna(0).tolist()),
+        "macd_json": json.dumps(df["macd"].round(4).fillna(0).tolist()),
+        "signal_json": json.dumps(df["signal"].round(4).fillna(0).tolist()),
+        "change_text": change_text,
+        "high_52w": high_52w,
+        "low_52w": low_52w,
+        "avg_volume": avg_volume,
+        "periods": ["1M", "3M", "1Y", "5Y"],   # ✅ เพิ่มตรงนี้
     }
+
     return render(request, "stock_chart.html", context)
-
-
-
-
-
 
 
 
@@ -613,6 +849,12 @@ def fetch_econ_data(code: str, months: int = 12):
 #     return JsonResponse({"indicator": code, "analysis": text})
 
 
+
+
+
+
+
+
 @csrf_exempt
 def ai_prompt_page(request):
     """
@@ -634,6 +876,8 @@ def ai_prompt_page(request):
     return render(request, "ai_prompt.html")
 
 
+
+
 def ch_all_tickers():
     with connections["clickhouse"].cursor() as cur:
         cur.execute("""
@@ -644,35 +888,89 @@ def ch_all_tickers():
         """)
         return [r[0] for r in cur.fetchall()]
 
+
+
+
+
+
+
+
+
+
+# ต้องมั่นใจว่ามีการ import connections จาก django.db
+# from django.db import connections 
+
 def ch_fetch_price(ticker: str, days: int = 30):
     """
-    ดึง OHLCV วันละ 1 แถวล่าสุด/วัน (เลือกค่าล่าสุดด้วย argMax ตาม load_ts)
-    คืนค่าจัดเรียงเก่า→ใหม่ เพื่อให้ prompt อ่านง่าย
+    ดึง OHLCV โดยใช้เทคนิค Zero-JOIN (หลาย Query) เพื่อหลีกเลี่ยงข้อจำกัด Multiple JOINs ของ ClickHouse
     """
-    sql = """
-      SELECT
-        d.date,
-        argMax(f.open,      f.load_ts) AS open,
-        argMax(f.high,      f.load_ts) AS high,
-        argMax(f.low,       f.load_ts) AS low,
-        argMax(f.close,     f.load_ts) AS close,
-        argMax(f.adj_close, f.load_ts) AS adj_close,
-        argMax(f.volume,    f.load_ts) AS volume
-      FROM market.fact_price_daily f
-      JOIN market.dim_symbol s ON s.id=f.symbol_id
-      JOIN market.dim_date   d ON d.id=f.date_id
-      WHERE lower(s.ticker) = %(ticker)s
-      GROUP BY d.date
-      ORDER BY d.date DESC
-      LIMIT %(days)s
-    """
+    
     with connections["clickhouse"].cursor() as cur:
-        cur.execute(sql, {"ticker": ticker.lower(), "days": days})
-        rows = cur.fetchall()
+        
+        # 1. A. Query 1: Get Symbol ID (Zero JOIN)
+        cur.execute(
+            "SELECT id FROM market.dim_symbol WHERE lower(ticker) = %(ticker)s", 
+            {"ticker": ticker.lower()}
+        )
+        symbol_row = cur.fetchone()
+        if not symbol_row:
+            # ควรจัดการ Error 404 ใน Django view ที่เรียกฟังก์ชันนี้
+            raise Exception(f"Ticker '{ticker}' not found in dim_symbol.")
+        symbol_id = symbol_row[0]
+        
+        # 1. B. Query 2: Get Date IDs and the actual date (Zero JOIN)
+        # ดึงวันที่จริงและ ID ของวันที่ที่ต้องการ (เช่น 30 วันล่าสุด)
+        date_sql = f"""
+        SELECT 
+            id, date 
+        FROM market.dim_date 
+        WHERE date >= today() - INTERVAL %(days)s DAY 
+        ORDER BY date ASC
+        """
+        cur.execute(date_sql, {"days": days})
+        date_rows = cur.fetchall()
+        
+        if not date_rows:
+            return [] # ไม่พบข้อมูลวันที่ในช่วงนี้
+            
+        # สร้าง Dictionary สำหรับแปลง ID เป็นวันที่จริงใน Python
+        date_lookup = {row[0]: row[1] for row in date_rows}
+        date_id_filter = ", ".join(map(str, date_lookup.keys()))
+        
+        
+        # 2. Query 3: Main Fact Data (Zero JOIN)
+        # ใช้ symbol_id และ date_id เป็นตัวกรองโดยตรงกับ Fact Table
+        main_sql = f"""
+        SELECT
+            f.date_id,
+            argMax(f.open, f.load_ts) AS open,
+            argMax(f.high, f.load_ts) AS high,
+            argMax(f.low, f.load_ts) AS low,
+            argMax(f.close, f.load_ts) AS close,
+            argMax(f.adj_close, f.load_ts) AS adj_close,
+            argMax(f.volume, f.load_ts) AS volume
+        FROM market.fact_price_daily f
+        WHERE f.symbol_id = %(symbol_id)s
+          AND f.date_id IN ({date_id_filter}) 
+        GROUP BY f.date_id
+        ORDER BY f.date_id ASC
+        """
+        
+        # เนื่องจากเราต้องใช้ date_id_filter เป็น string ใน SQL Query 
+        # จึงต้องส่ง symbol_id แยกไป
+        cur.execute(main_sql, {"symbol_id": symbol_id})
+        fact_rows = cur.fetchall()
+        
+    # 3. Combine results in Python (แทนการ JOIN)
+    final_rows = []
+    for date_id, open_p, high_p, low_p, close_p, adj_close_p, volume_p in fact_rows:
+        date_str = date_lookup.get(date_id)
+        if date_str:
+            # นำวันที่จริงที่ได้จาก Dictionary มาใส่เป็นคอลัมน์แรก
+            final_rows.append((date_str, open_p, high_p, low_p, close_p, adj_close_p, volume_p))
 
-    # เรียงเก่า -> ใหม่
-    rows.reverse()
-    return rows  # [(date, open, high, low, close, adj_close, volume), ...]
+    # โค้ดนี้จะคืนค่าเรียงเก่า -> ใหม่ (ASC) ตามที่ต้องการแล้ว
+    return final_rows # [(date, open, high, low, close, adj_close, volume), ...]
 
 def ch_fetch_econ(code: str, npoints: int = 12):
     """
@@ -702,37 +1000,164 @@ def ai_stock_page(request):
     # preselect ตัวแรกถ้ามี
     return render(request, "ai_stock.html", {"symbols": symbols, "default_days": 30})
 
+
+
+
+
+
+
+
 # ---------- API: วิเคราะห์หุ้นด้วยข้อมูลจาก ClickHouse + prompt ผู้ใช้ ----------
 from django.http import JsonResponse, Http404
 from django.views.decorators.csrf import csrf_exempt
 import json
+
+import google.generativeai as genai
+# ต้องกำหนด API Key ให้ถูกต้อง
+genai.configure(api_key="AIzaSyCv3HKt9M-SkeAv9Tk3JhJpmr7uH6s9j-A") 
+model = genai.GenerativeModel("gemini-2.5-flash") # หรือชื่อโมเดลอื่นที่คุณใช้
+
+
+
+
+
+
+
+
+# เดิมใช้ดีมดปิด
+# import json
+# from django.http import JsonResponse
+# from django.views.decorators.csrf import csrf_exempt
+# from datetime import date, timedelta
+# from typing import List, Tuple, Any
+
+
+# @csrf_exempt
+# def ai_analyze_stock(request):
+#     if request.method != "POST":
+#         return JsonResponse({"error": "POST only"}, status=405)
+
+#     # 1. Parse body (ไม่มีการเปลี่ยนแปลง)
+#     try:
+#         payload = json.loads(request.body.decode())
+#     except Exception:
+#         return JsonResponse({"error": "invalid json body"}, status=400)
+
+#     ticker      = (payload.get("ticker") or "").strip()
+#     days        = int(payload.get("days") or 30)
+#     user_prompt = (payload.get("prompt") or "").strip()
+#     econ_code   = (payload.get("econ_code") or "").strip()
+
+#     if not ticker:
+#         return JsonResponse({"error": "ticker is required"}, status=400)
+
+#     rows = []
+#     # 2. ดึงจาก CH (พร้อมจัดการข้อผิดพลาดในการเชื่อมต่อ/คิวรี)
+#     try:
+#         rows = ch_fetch_price(ticker, days=days)
+#     except Exception as e:
+#         # ดักจับข้อผิดพลาดในการเชื่อมต่อฐานข้อมูลหรือข้อผิดพลาดที่ไม่คาดคิด
+#         return JsonResponse({"error": f"Database fetch error: {e}"}, status=500)
+        
+#     if not rows:
+#         # แก้ Http404 ให้เป็น JsonResponse 404
+#         return JsonResponse({"error": f"No data for ticker={ticker}"}, status=404)
+
+#     # แปลงเป็นข้อความ (ไม่มีการเปลี่ยนแปลง)
+#     price_lines = []
+#     for d, o, h, l, c, adjc, v in rows:
+#         o = float(o) if o is not None else None
+#         h = float(h) if h is not None else None
+#         l = float(l) if l is not None else None
+#         c = float(c) if c is not None else None
+#         adjc = float(adjc) if adjc is not None else None
+#         v = int(v) if v is not None else 0
+#         price_lines.append(f"{d} O:{o} H:{h} L:{l} C:{c} AdjC:{adjc} V:{v}")
+#     price_block = "\n".join(price_lines)
+
+#     econ_block = ""
+#     if econ_code:
+#         try:
+#             econ = ch_fetch_econ(econ_code, npoints=12)
+#             if econ:
+#                 econ_lines = [f"{d} {float(val) if val is not None else 'null'}" for d, val in econ]
+#                 econ_block = "\n\nตัวชี้วัดเศรษฐกิจ ({}) 12 จุดล่าสุด:\n{}".format(econ_code, "\n".join(econ_lines))
+#         except Exception as e:
+#             # ดักจับข้อผิดพลาดในการดึงข้อมูลเศรษฐกิจ แต่ไม่ทำให้ระบบ crash
+#             econ_block = f"\n\n[Warning: Failed to fetch econ data ({e})]"
+
+
+#     # 3. prompt สำหรับ Gemini (ใช้ตัวแปรทั้งหมดให้ถูกต้อง)
+#     SYSTEM_PROMPT = (
+#         # ... (ส่วน SYSTEM_PROMPT ที่คุณกำหนดไว้ด้านบนของไฟล์) ...
+#     ) # สมมติว่าคุณกำหนด SYSTEM_PROMPT ไว้เป็น Global/Module Variable แล้ว
+
+#     # ต้องกำหนดค่าเริ่มต้นของ prompt ก่อนการใช้งาน
+#     prompt = (
+#         f"{SYSTEM_PROMPT}" 
+#         f"--- ข้อมูลสำหรับการวิเคราะห์ ---\n"
+#         f"ข้อมูลราคาหุ้น {ticker} {days} วันล่าสุด (เรียงเก่า→ใหม่):\n"
+#         f"{price_block}\n"
+#         f"{econ_block}"
+#         f"--- คำสั่งวิเคราะห์ ---\n"
+#         f"โปรดวิเคราะห์ราคาหุ้น **{ticker}** โดยสรุปประเด็นต่อไปนี้:\n"
+#         f"1. **แนวโน้มหลัก (Trend)** ในช่วง {days} วันที่ผ่านมา (เช่น ขาขึ้น/ลง, Sideways)\n"
+#         f"2. **แนวรับและแนวต้าน (Support/Resistance)** ที่สำคัญจากข้อมูลที่เห็น\n"
+#         f"3. **ข้อสังเกตเฉพาะ** จากปริมาณการซื้อขาย (Volume) และการเคลื่อนไหวของราคา (Volatility)\n"
+#         f"4. **การสรุปและข้อควรพิจารณา** ในเชิงของความเสี่ยงและโมเมนตัม\n"
+#     )
+
+#     if user_prompt:
+#         prompt += f"\n--- คำขอเพิ่มเติมจากผู้ใช้ ---\n"
+#         prompt += f"{user_prompt}\n"
+#         prompt += f"โปรดรวมการวิเคราะห์ที่ผู้ใช้ต้องการเข้ากับการวิเคราะห์หลักข้างต้นด้วย\n"
+
+
+#     # 4. เรียก Gemini (จัดการข้อผิดพลาดเฉพาะที่นี่)
+#     try:
+#         resp = model.generate_content(prompt)
+#         answer = resp.text
+#     except Exception as e:
+#         # นี่คือ Try/Catch สำหรับการติดต่อ Gemini/OpenAI API โดยเฉพาะ
+#         return JsonResponse({"error": f"Gemini API error: {e}"}, status=500)
+
+#     # 5. response
+#     return JsonResponse({
+#         "ticker": ticker,
+#         "days": days,
+#         "used_econ": econ_code or None,
+#         "analysis": answer,
+       
+#     }, status=200)
+
 
 @csrf_exempt
 def ai_analyze_stock(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST only"}, status=405)
 
-    # parse body
     try:
         payload = json.loads(request.body.decode())
     except Exception:
         return JsonResponse({"error": "invalid json body"}, status=400)
 
-    ticker     = (payload.get("ticker") or "").strip()
-    days       = int(payload.get("days") or 30)
-    user_prompt= (payload.get("prompt") or "").strip()
-    econ_code  = (payload.get("econ_code") or "").strip()
+    ticker      = (payload.get("ticker") or "").strip()
+    days        = int(payload.get("days") or 30)
+    user_prompt = (payload.get("prompt") or "").strip()
+    econ_code   = (payload.get("econ_code") or "").strip()
 
     if not ticker:
         return JsonResponse({"error": "ticker is required"}, status=400)
 
-    # 1) ดึงจาก CH (วันละ 1 แถวล่าสุดด้วย argMax)
-    rows = ch_fetch_price(ticker, days=days)
-    if not rows:
-        raise Http404(f"No data for ticker={ticker}")
+    # --- 1️⃣ ดึงข้อมูลหุ้นจาก ClickHouse ---
+    try:
+        rows = ch_fetch_price(ticker, days=days)
+    except Exception as e:
+        return JsonResponse({"error": f"Database fetch error: {e}"}, status=500)
 
-    # แปลงเป็นข้อความ (เก่า→ใหม่)
-    # rows: (date, open, high, low, close, adj_close, volume)
+    if not rows:
+        return JsonResponse({"error": f"No data for ticker={ticker}"}, status=404)
+
     price_lines = []
     for d, o, h, l, c, adjc, v in rows:
         o = float(o) if o is not None else None
@@ -744,41 +1169,78 @@ def ai_analyze_stock(request):
         price_lines.append(f"{d} O:{o} H:{h} L:{l} C:{c} AdjC:{adjc} V:{v}")
     price_block = "\n".join(price_lines)
 
+    # --- 2️⃣ ดึงข้อมูลเศรษฐกิจจาก Postgres ORM ---
+    from warehouse.models import EconDailyFact, EconomicIndicator
+
+    econ_info = {}
+    for code in ["CPI", "REAL_GDP", "UNEMPLOYMENT"]:
+        indicator = EconomicIndicator.objects.filter(code=code).first()
+        if indicator:
+            latest = (
+                EconDailyFact.objects.filter(indicator=indicator)
+                .select_related("date")
+                .order_by("-date__date")
+                .first()
+            )
+            if latest:
+                econ_info[code] = {
+                    "name": indicator.name,
+                    "unit": indicator.unit,
+                    "value": float(latest.value),
+                    "date": latest.date.date.strftime("%Y-%m-%d")
+                }
+
+    econ_summary = "\n".join([
+        f"• {econ_info[c]['name']} ({c}) = {econ_info[c]['value']} {econ_info[c]['unit']} ({econ_info[c]['date']})"
+        for c in econ_info
+    ]) or "ไม่มีข้อมูลเศรษฐกิจล่าสุดในฐานข้อมูล"
+
+    # --- 3️⃣ รวม block เศรษฐกิจเพิ่มเติมถ้าผู้ใช้เลือก econ_code ---
     econ_block = ""
     if econ_code:
-        econ = ch_fetch_econ(econ_code, npoints=12)
-        if econ:
-            econ_lines = [f"{d} {float(val) if val is not None else 'null'}" for d, val in econ]
-            econ_block = "\n\nตัวชี้วัดเศรษฐกิจ ({}) 12 จุดล่าสุด:\n{}".format(econ_code, "\n".join(econ_lines))
+        if econ_code in econ_info:
+            e = econ_info[econ_code]
+            econ_block = f"\n\nตัวชี้วัด {econ_code}: {e['value']} {e['unit']} ({e['date']})"
+        else:
+            econ_block = f"\n\n[Warning: ไม่มีข้อมูล {econ_code} ในฐานข้อมูล]"
 
-    # 2) prompt สำหรับ Gemini
-    prompt = (
-        f"คุณเป็นผู้ช่วยวิเคราะห์ข้อมูลตลาดทุน\n"
-        f"โปรดวิเคราะห์ราคาหุ้น {ticker} จากข้อมูล OHLCV {days} วันล่าสุดที่ให้ (เรียงเก่า→ใหม่) "
-        f"โดยสรุปแนวโน้มหลัก, แนวรับ/แนวต้านใกล้ ๆ, โมเมนตัม, ความเสี่ยง และบันทึกสั้น ๆ ที่ปฏิบัติได้\n\n"
-        f"ข้อมูลราคา:\n{price_block}"
-        f"{econ_block}\n\n"
-        f"เงื่อนไข: อย่าคิดตัวเลขที่ไม่มีในข้อมูล, อ้างอิงวันที่ชัดเจน, เขียนเป็น bullet, "
-        f"หลีกเลี่ยงการให้คำแนะนำซื้อขายตรง ๆ (เน้นข้อมูลเชิงพรรณนา/การสังเกต)\n"
-    )
+    # --- 4️⃣ สร้าง Prompt สำหรับ AI ---
+    prompt = f"""
+คุณเป็นนักวิเคราะห์ตลาดหุ้นระดับมืออาชีพ
+
+วิเคราะห์ราคาหุ้น {ticker} โดยอ้างอิงจากข้อมูลจริงด้านล่างนี้:
+
+📊 **ข้อมูลเศรษฐกิจล่าสุด**
+{econ_summary}
+
+💹 **ข้อมูลราคาหุ้น {ticker} {days} วันล่าสุด (เรียงเก่า→ใหม่):**
+{price_block}
+
+{econ_block}
+
+โปรดสรุปในประเด็น:
+1. แนวโน้มหลัก (Trend)
+2. แนวรับและแนวต้าน (Support / Resistance)
+3. ความสัมพันธ์กับภาวะเศรษฐกิจ (CPI, GDP, Unemployment)
+4. ปริมาณการซื้อขายและความผันผวน
+5. ข้อควรระวังและมุมมองระยะสั้น
+"""
+
     if user_prompt:
-        prompt += f"\nคำขอเพิ่มเติมจากผู้ใช้: {user_prompt}\n"
+        prompt += f"\n\n--- คำขอเพิ่มเติมจากผู้ใช้ ---\n{user_prompt}"
 
-    # 3) เรียก Gemini
+    # --- 5️⃣ เรียก Gemini ---
     try:
         resp = model.generate_content(prompt)
         answer = resp.text
     except Exception as e:
-        return JsonResponse({"error": f"gemini: {e}"}, status=500)
+        return JsonResponse({"error": f"Gemini API error: {e}"}, status=500)
 
-    # 4) response (มี preview ไว้เช็ค)
+    # --- 6️⃣ ส่งผลกลับ ---
     return JsonResponse({
         "ticker": ticker,
         "days": days,
-        "used_econ": econ_code or None,
-        "analysis": answer,
-        "preview": {
-            "rows_returned": len(rows),
-            "first_lines": price_lines[:5],
-        }
+        "econ_data_used": econ_info,
+        "analysis": answer
     }, status=200)
+
